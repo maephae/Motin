@@ -137,19 +137,6 @@ function computeLattice(x) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  COLOR SYSTEM — keyed by subgroup ORDER
-// ═══════════════════════════════════════════════════════════════════════
-
-const ORDER_COLS = ["#16a34a","#0284c7","#7c3aed","#db2777","#ea580c","#ca8a04","#be123c","#0891b2","#65a30d","#9333ea"];
-function buildOrderColorMap(nodes) {
-  const orders = [...new Set(nodes.map(n => n.order))].sort((a, b) => a - b);
-  const map = {};
-  orders.forEach((o, i) => { map[o] = ORDER_COLS[i % ORDER_COLS.length]; });
-  return map;
-}
-function orderColor(order, colorMap) { return colorMap[order] ?? "#9aaa88"; }
-
-// ═══════════════════════════════════════════════════════════════════════
 //  GROUP THEORY FACTS
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -176,13 +163,29 @@ function groupExponent(coprimes, x) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  COLOR SYSTEM
+// ═══════════════════════════════════════════════════════════════════════
+
+const ORDER_COLS = ["#16a34a","#0284c7","#7c3aed","#db2777","#ea580c","#ca8a04","#be123c","#0891b2","#65a30d","#9333ea"];
+// Distinct accent colors for different lattices on the canvas
+const LATTICE_ACCENTS = ["#0284c7","#16a34a","#7c3aed","#ea580c","#db2777","#ca8a04"];
+
+function buildOrderColorMap(nodes) {
+  const orders = [...new Set(nodes.map(n => n.order))].sort((a, b) => a - b);
+  const map = {};
+  orders.forEach((o, i) => { map[o] = ORDER_COLS[i % ORDER_COLS.length]; });
+  return map;
+}
+function orderColor(order, colorMap) { return colorMap[order] ?? "#9aaa88"; }
+
+// ═══════════════════════════════════════════════════════════════════════
 //  PALETTE
 // ═══════════════════════════════════════════════════════════════════════
 
 const C = {
-  bg:           "#F4F6F4",  // canvas background
-  panelBg:      "#B7D0DE",  // panel background
-  panelSurface: "#CADBDC",  // slightly lighter surface
+  bg:           "#F4F6F4",
+  panelBg:      "#B7D0DE",
+  panelSurface: "#CADBDC",
   border:       "#93b5c8",
   borderHover:  "#6a9ab5",
   ink:          "#0B151E",
@@ -196,10 +199,9 @@ const C = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SHARED COMPONENTS
+//  SHARED UI COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════
 
-// A draggable horizontal splitter bar between sub-panes
 function HPSplitter({ onDrag }) {
   const dragging = useRef(false);
   const startY = useRef(0);
@@ -216,7 +218,7 @@ function HPSplitter({ onDrag }) {
   return (
     <div onMouseDown={onMouseDown} style={{
       height: 6, flexShrink: 0, cursor: "row-resize", background: C.border,
-      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+      display: "flex", alignItems: "center", justifyContent: "center",
       transition: "background 0.15s", position: "relative",
     }}
       onMouseEnter={e => e.currentTarget.style.background = C.borderHover}
@@ -228,7 +230,6 @@ function HPSplitter({ onDrag }) {
   );
 }
 
-// Pane: a titled scrollable section with a collapse toggle
 function Pane({ title, children, height, style }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height, overflow: "hidden", flexShrink: 0, ...style }}>
@@ -242,7 +243,6 @@ function Pane({ title, children, height, style }) {
   );
 }
 
-// Vertical panel collapse/expand toggle button
 function CollapseBtn({ collapsed, onToggle, side }) {
   return (
     <button onClick={onToggle} title={collapsed ? `Expand ${side} panel` : `Collapse ${side} panel`}
@@ -253,8 +253,7 @@ function CollapseBtn({ collapsed, onToggle, side }) {
         background: C.border, border: "none", cursor: "pointer",
         borderRadius: side === "left" ? "0 4px 4px 0" : "4px 0 0 4px",
         display: "flex", alignItems: "center", justifyContent: "center",
-        color: C.ink, fontSize: 10, padding: 0,
-        transition: "background 0.15s",
+        color: C.ink, fontSize: 10, padding: 0, transition: "background 0.15s",
       }}
       onMouseEnter={e => e.currentTarget.style.background = C.borderHover}
       onMouseLeave={e => e.currentTarget.style.background = C.border}>
@@ -263,7 +262,6 @@ function CollapseBtn({ collapsed, onToggle, side }) {
   );
 }
 
-// Vertical VSplitter between main panels
 function VSplitter({ onMouseDown }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -277,11 +275,118 @@ function VSplitter({ onMouseDown }) {
   );
 }
 
-function StatPill({ label, value, accent }) {
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION — collapsible subheader system
+// ═══════════════════════════════════════════════════════════════════════
+
+const SECTION_DEPTH_STYLES = [
+  { bg: "#9fbece", bgHover: "#93b5c8", fontSize: 9,  letterSpacing: 3,   fontWeight: "700", paddingY: 7 },
+  { bg: "#adc8d8", bgHover: "#a0bece", fontSize: 9,  letterSpacing: 2.5, fontWeight: "600", paddingY: 6 },
+  { bg: "#b8d2e0", bgHover: "#adc8d8", fontSize: 8,  letterSpacing: 2,   fontWeight: "500", paddingY: 5 },
+];
+
+function Section({ label, badge, accent, defaultOpen = true, depth = 0, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const ds = SECTION_DEPTH_STYLES[Math.min(depth, 2)];
   return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ fontSize: 9, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: "700", color: accent || C.ink, fontFamily: "'Courier New', monospace" }}>{value}</div>
+    <div style={{ width: "100%" }}>
+      <div onClick={() => setOpen(o => !o)} style={{
+        display: "flex", alignItems: "center",
+        padding: `${ds.paddingY}px 10px`,
+        background: ds.bg,
+        borderLeft: accent ? `3px solid ${accent}` : `3px solid transparent`,
+        borderBottom: `1px solid ${C.border}`,
+        cursor: "pointer", userSelect: "none",
+        transition: "background 0.13s", gap: 7,
+      }}
+        onMouseEnter={e => e.currentTarget.style.background = ds.bgHover}
+        onMouseLeave={e => e.currentTarget.style.background = ds.bg}>
+        <span style={{
+          flex: 1, fontSize: ds.fontSize, letterSpacing: ds.letterSpacing,
+          textTransform: "uppercase", fontWeight: ds.fontWeight,
+          color: C.inkMid, fontFamily: "'Courier New', monospace",
+          minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>{label}</span>
+        {badge !== undefined && (
+          <span style={{
+            fontSize: 8, color: C.inkFaint,
+            background: C.panelBg, border: `1px solid ${C.border}`,
+            borderRadius: 3, padding: "1px 5px",
+            fontFamily: "'Courier New', monospace", letterSpacing: 0.5, flexShrink: 0,
+          }}>{badge}</span>
+        )}
+        <span style={{
+          fontSize: 8, color: C.inkFaint, flexShrink: 0,
+          transition: "transform 0.18s",
+          transform: open ? "rotate(180deg)" : "rotate(0deg)",
+          display: "inline-block", lineHeight: 1,
+        }}>▼</span>
+      </div>
+      <div style={{ overflow: "hidden", maxHeight: open ? 4000 : 0, transition: "max-height 0.2s ease" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SectionRow({ label, value, accent, mono = true }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "5px 12px", borderBottom: `1px solid ${C.border}` }}>
+      <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 2, textTransform: "uppercase", flexShrink: 0, minWidth: 56 }}>{label}</span>
+      <span style={{ fontSize: 12, color: accent || C.ink, fontWeight: "600", fontFamily: mono ? "'Courier New', monospace" : "inherit", wordBreak: "break-all", lineHeight: 1.4 }}>{value}</span>
+    </div>
+  );
+}
+
+function SectionBody({ children, noPad = false }) {
+  return (
+    <div style={{ padding: noPad ? 0 : "8px 12px", borderBottom: `1px solid ${C.border}` }}>
+      {children}
+    </div>
+  );
+}
+
+// Toggle row inside a Section
+function SectionToggle({ label, checked, onChange }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", borderBottom: `1px solid ${C.border}` }}>
+      <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 2, textTransform: "uppercase" }}>{label}</span>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
+          style={{ accentColor: C.inkMid, cursor: "pointer" }} />
+        <span style={{ fontSize: 9, color: checked ? C.inkMid : C.inkFaint, letterSpacing: 1 }}>{checked ? "ON" : "OFF"}</span>
+      </label>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SUBGROUP LIST ROW — reusable in Legend & Key
+// ═══════════════════════════════════════════════════════════════════════
+
+function SubgroupRow({ node, colorMap, isSelected, onToggle }) {
+  const col = orderColor(node.order, colorMap);
+  return (
+    <div onClick={onToggle} style={{
+      background: isSelected ? C.selectedBg : "transparent",
+      border: `1px solid ${isSelected ? C.selectedBord : C.border}`,
+      borderRadius: 4, padding: "5px 8px", marginBottom: 3,
+      cursor: "pointer", display: "flex", alignItems: "center", gap: 7,
+      transition: "background 0.1s, border-color 0.1s",
+    }}>
+      <svg width={13} height={13} style={{ flexShrink: 0 }}>
+        {node.shape === "circle"   && <circle cx={6.5} cy={6.5} r={5} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
+        {node.shape === "square"   && <rect x={1} y={1} width={11} height={11} rx={1.5} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
+        {node.shape === "triangle" && <polygon points="6.5,1 12.5,12 0.5,12" fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
+      </svg>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 10, color: C.ink, fontFamily: "'Courier New', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.label}</div>
+        <div style={{ fontSize: 8, color: C.inkFaint, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.genAll}</div>
+      </div>
+      <div style={{ flexShrink: 0, textAlign: "right" }}>
+        <div style={{ fontSize: 11, color: col, fontWeight: "700" }}>|{node.order}|</div>
+        <div style={{ fontSize: 8, color: C.inkFaint, textTransform: "uppercase" }}>{node.isCyclic ? "cyc" : node.order === 1 ? "triv" : "non"}</div>
+      </div>
     </div>
   );
 }
@@ -305,7 +410,10 @@ function ShapeOccluder({ node, R }) {
   return <polygon points={`${node.x},${node.y - h * 0.68} ${node.x - h * 0.72},${node.y + h * 0.46} ${node.x + h * 0.72},${node.y + h * 0.46}`} fill={fill} />;
 }
 
-function ShapeNode({ node, colorMap, isSelected, isAdjacent, onClick, dragMode, onDragStart }) {
+// Module-level ref for click-vs-drag detection
+const didDragRef = { current: false };
+
+function ShapeNode({ node, colorMap, isSelected, isAdjacent, onToggleSelect, onMouseDown }) {
   const col = orderColor(node.order, colorMap);
   const R = 26;
   const g = nodeGeometry(node, R);
@@ -322,10 +430,12 @@ function ShapeNode({ node, colorMap, isSelected, isAdjacent, onClick, dragMode, 
   else { const h = g.h; shapeEl = <polygon points={`${node.x},${node.y - h * 0.68} ${node.x - h * 0.72},${node.y + h * 0.46} ${node.x + h * 0.72},${node.y + h * 0.46}`} fill={fill} stroke={strokeCol} strokeWidth={sw} strokeDasharray={dash} />; }
 
   return (
-    <g data-node="true"
-      style={{ cursor: dragMode ? "grab" : "pointer" }}
-      onMouseDown={e => { if (dragMode) { e.preventDefault(); e.stopPropagation(); onDragStart(node.id, e); } }}
-      onClick={() => { if (!dragMode) onClick(); }}>
+    <g data-node="true" style={{ cursor: isSelected ? "grab" : "pointer" }}
+      onMouseDown={e => {
+        didDragRef.current = false;
+        if (isSelected) { onMouseDown(node.id, e); e.stopPropagation(); }
+      }}
+      onClick={e => { if (!didDragRef.current) onToggleSelect(node.id); e.stopPropagation(); }}>
       {shapeEl}
       <text x={node.x} y={node.y + 1} textAnchor="middle" dominantBaseline="middle"
         fontSize={9.5} fill={textCol} fontFamily="'Courier New', monospace" fontWeight="600"
@@ -335,128 +445,245 @@ function ShapeNode({ node, colorMap, isSelected, isAdjacent, onClick, dragMode, 
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  EPICENTER — alchemical sun ☉ — draggable lattice anchor
+// ═══════════════════════════════════════════════════════════════════════
+
+function Epicenter({ x, y, accent, onMouseDown }) {
+  const R = 14;
+  return (
+    <g data-epicenter="true" style={{ cursor: "grab" }}
+      onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onMouseDown(e); }}>
+      {/* outer circle */}
+      <circle cx={x} cy={y} r={R} fill="none" stroke={accent} strokeWidth={1.5} opacity={0.7} />
+      {/* inner dot */}
+      <circle cx={x} cy={y} r={3} fill={accent} opacity={0.85} />
+      {/* crosshair lines */}
+      <line x1={x - R - 5} y1={y} x2={x - R + 3} y2={y} stroke={accent} strokeWidth={1} opacity={0.5} />
+      <line x1={x + R - 3} y1={y} x2={x + R + 5} y2={y} stroke={accent} strokeWidth={1} opacity={0.5} />
+      <line x1={x} y1={y - R - 5} x2={x} y2={y - R + 3} stroke={accent} strokeWidth={1} opacity={0.5} />
+      <line x1={x} y1={y + R - 3} x2={x} y2={y + R + 5} stroke={accent} strokeWidth={1} opacity={0.5} />
+    </g>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  LATTICE DATA HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+
+let nextLatticeId = 1;
+function makeLatticeEntry(xVal, canvasW, canvasH) {
+  const base = computeLattice(xVal);
+  // Default epicenter = center of canvas in world coords (will be set properly after mount)
+  return {
+    id: nextLatticeId++,
+    x: xVal,
+    base,          // raw computed lattice (node positions are relative to epicenter=0,0)
+    nodePositions: {},  // per-node overrides relative to epicenter
+    epicenter: { x: canvasW / 2, y: canvasH / 2 },
+    showArrows: true,
+    showEdges: true,
+    showEpicenter: true,
+  };
+}
+
+// Resolve a lattice entry's nodes with overrides, positioned relative to epicenter
+function resolveNodes(entry) {
+  return entry.base.nodes.map(n => ({
+    ...n,
+    x: (entry.nodePositions[n.id]?.x ?? n.x) + entry.epicenter.x - entry.base.W / 2,
+    y: (entry.nodePositions[n.id]?.y ?? n.y) + entry.epicenter.y - entry.base.H / 2,
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  MAIN APP
 // ═══════════════════════════════════════════════════════════════════════
 
 const PRESETS = [8, 10, 12, 15, 18, 20, 24, 30, 36, 40];
 
 export default function App() {
-  // ── Group / lattice state ──────────────────────────────────────────
+  // ── Lattice entries ────────────────────────────────────────────────
+  // Each: { id, x, base, nodePositions, epicenter, showArrows, showEdges, showEpicenter }
+  const [lattices, setLattices] = useState([]);
   const [inputVal, setInputVal] = useState("18");
-  const [x, setX] = useState(18);
-  const [baseLattice, setBaseLattice] = useState(null);
-  const [nodePositions, setNodePositions] = useState({});
-  const [selected, setSelected] = useState(null);
-  const [dragMode, setDragMode] = useState(false);
-  const [showArrows, setShowArrows] = useState(true);
   const [error, setError] = useState("");
 
-  // ── Panel widths (px) ──────────────────────────────────────────────
-  const [leftW, setLeftW] = useState(260);
-  const [rightW, setRightW] = useState(300);
+  // ── Selection — keyed by `${latticeId}:${nodeId}` ─────────────────
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // ── Panel widths ───────────────────────────────────────────────────
+  const [leftW, setLeftW] = useState(270);
+  const [rightW, setRightW] = useState(310);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
-  const leftWBeforeCollapse = useRef(260);
-  const rightWBeforeCollapse = useRef(300);
+  const leftWBeforeCollapse = useRef(270);
+  const rightWBeforeCollapse = useRef(310);
 
-  // ── Left sub-pane heights (px for top pane; bottom fills rest) ─────
-  const [leftPane1H, setLeftPane1H] = useState(200); // Graph generation
-  const [leftPane2H, setLeftPane2H] = useState(180); // Morphisms
-  // pane 3 (Key) fills flex remainder
+  // ── Left pane heights ──────────────────────────────────────────────
+  const [leftPane1H, setLeftPane1H] = useState(210);
+  const [leftPane2H, setLeftPane2H] = useState(180);
 
-  // ── Right sub-pane heights ─────────────────────────────────────────
-  const [rightPane1H, setRightPane1H] = useState(260); // Group Info
-  const [rightPane2H, setRightPane2H] = useState(200); // Selected
-  // pane 3 (All subgroups) fills remainder
+  // ── Right pane heights ─────────────────────────────────────────────
+  const [rightPane1H, setRightPane1H] = useState(280);
 
-  // ── Camera ──────────────────────────────────────────────────────────
+  // ── Camera ────────────────────────────────────────────────────────
   const [camera, setCamera] = useState({ tx: 0, ty: 0, scale: 1 });
   const cameraRef = useRef({ tx: 0, ty: 0, scale: 1 });
   useEffect(() => { cameraRef.current = camera; }, [camera]);
 
   const panelRef = useRef(null);
-  const isPanning = useRef(false);
-  const panStart = useRef({ mouseX: 0, mouseY: 0, tx: 0, ty: 0 });
-  const svgRef = useRef(null);
   const containerRef = useRef(null);
 
-  // ── Vertical panel splitters ───────────────────────────────────────
+  // ── Splitter refs ─────────────────────────────────────────────────
   const leftSplitDragging = useRef(false);
   const rightSplitDragging = useRef(false);
   const leftSplitStart = useRef(0);
   const rightSplitStart = useRef(0);
+  const isPanning = useRef(false);
+  const panStart = useRef({ mouseX: 0, mouseY: 0, tx: 0, ty: 0 });
 
-  // ── Compute lattice ────────────────────────────────────────────────
-  useEffect(() => {
-    try {
-      const lat = computeLattice(x);
-      setBaseLattice(lat);
-      setNodePositions({});
-      setSelected(null);
-      setError("");
-      requestAnimationFrame(() => {
-        if (!panelRef.current || !lat.W || !lat.H) return;
-        const r = panelRef.current.getBoundingClientRect();
-        const scale = Math.min(1, Math.min(r.width / (lat.W + 80), r.height / (lat.H + 80)));
-        setCamera({ tx: (r.width - lat.W * scale) / 2, ty: (r.height - lat.H * scale) / 2, scale });
-      });
-    } catch (e) { setError(e.message); }
-  }, [x]);
-
-  const lattice = baseLattice ? {
-    ...baseLattice,
-    nodes: baseLattice.nodes.map(n => ({ ...n, x: nodePositions[n.id]?.x ?? n.x, y: nodePositions[n.id]?.y ?? n.y }))
-  } : null;
-
-  // ── Node dragging ──────────────────────────────────────────────────
+  // ── Node drag ────────────────────────────────────────────────────
   const nodeDragging = useRef(null);
-  const onNodeDragStart = useCallback((id, e) => {
-    if (!lattice) return;
-    const node = lattice.nodes.find(n => n.id === id);
-    if (!node) return;
-    e.stopPropagation();
-    nodeDragging.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startNodeX: node.x, startNodeY: node.y };
-    setSelected(id);
-  }, [lattice]);
+  // { latticeId, startMouseX, startMouseY, startPositions: {nodeId: {x,y}}, startEpicenter: {x,y} }
+  const epicenterDragging = useRef(null);
+  // { latticeId, startMouseX, startMouseY, startEpicenter: {x,y} }
+  const mouseDownPos = useRef(null);
+  const didDrag = useRef(false);
 
-  // ── Pan ────────────────────────────────────────────────────────────
+  // ── Initial lattice on mount ──────────────────────────────────────
+  useEffect(() => {
+    const r = panelRef.current?.getBoundingClientRect();
+    const cw = r?.width ?? 800, ch = r?.height ?? 600;
+    const entry = makeLatticeEntry(18, cw, ch);
+    setLattices([entry]);
+  }, []);
+
+  // ── Helpers to update a single lattice entry immutably ────────────
+  const updateLattice = useCallback((id, patch) => {
+    setLattices(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
+  }, []);
+
+  // ── Add lattice ───────────────────────────────────────────────────
+  const addLattice = useCallback((xVal) => {
+    const n = parseInt(xVal);
+    if (isNaN(n) || n < 2 || n > 200) { setError("Enter 2–200"); return; }
+    setError("");
+    const r = panelRef.current?.getBoundingClientRect();
+    const cw = r?.width ?? 800, ch = r?.height ?? 600;
+    // Offset each new lattice slightly so they don't stack exactly
+    const offset = lattices.length * 40;
+    const entry = makeLatticeEntry(n, cw, ch);
+    entry.epicenter = { x: cw / 2 + offset, y: ch / 2 + offset };
+    setLattices(prev => [...prev, entry]);
+  }, [lattices.length]);
+
+  // ── Remove lattice ────────────────────────────────────────────────
+  const removeLattice = useCallback((id) => {
+    setLattices(prev => prev.filter(l => l.id !== id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const k of next) { if (k.startsWith(`${id}:`)) next.delete(k); }
+      return next;
+    });
+  }, []);
+
+  // ── Node drag start ───────────────────────────────────────────────
+  const onNodeMouseDown = useCallback((latticeId, nodeId, e) => {
+    const key = `${latticeId}:${nodeId}`;
+    if (!selectedIds.has(key)) return;
+    e.preventDefault(); e.stopPropagation();
+    didDrag.current = false; didDragRef.current = false;
+    const entry = lattices.find(l => l.id === latticeId);
+    if (!entry) return;
+    const nodes = resolveNodes(entry);
+    // Snapshot start positions of all selected nodes in this lattice
+    const startPositions = {};
+    for (const k of selectedIds) {
+      const [lid, nid] = k.split(":").map(Number);
+      if (lid !== latticeId) continue;
+      const n = nodes.find(n => n.id === nid);
+      if (n) {
+        // Store positions relative to epicenter
+        startPositions[nid] = {
+          x: (entry.nodePositions[nid]?.x ?? entry.base.nodes[nid]?.x) ?? n.x - entry.epicenter.x + entry.base.W / 2,
+          y: (entry.nodePositions[nid]?.y ?? entry.base.nodes[nid]?.y) ?? n.y - entry.epicenter.y + entry.base.H / 2,
+        };
+      }
+    }
+    nodeDragging.current = { latticeId, startMouseX: e.clientX, startMouseY: e.clientY, startPositions };
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
+  }, [lattices, selectedIds]);
+
+  // ── Epicenter drag start ──────────────────────────────────────────
+  const onEpicenterMouseDown = useCallback((latticeId, e) => {
+    e.preventDefault(); e.stopPropagation();
+    didDrag.current = false; didDragRef.current = false;
+    const entry = lattices.find(l => l.id === latticeId);
+    if (!entry) return;
+    epicenterDragging.current = {
+      latticeId,
+      startMouseX: e.clientX, startMouseY: e.clientY,
+      startEpicenter: { ...entry.epicenter },
+    };
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
+  }, [lattices]);
+
+  // ── Canvas mousedown (pan) ────────────────────────────────────────
   const onCanvasMouseDown = useCallback((e) => {
-    if (dragMode) return;
-    if (e.target.closest && e.target.closest("g[data-node]")) return;
+    if (e.target.closest && (e.target.closest("g[data-node]") || e.target.closest("g[data-epicenter]"))) return;
     e.preventDefault();
+    didDrag.current = false; didDragRef.current = false;
     isPanning.current = true;
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
     panStart.current = { mouseX: e.clientX, mouseY: e.clientY, tx: cameraRef.current.tx, ty: cameraRef.current.ty };
     document.body.style.cursor = "grabbing";
     document.body.style.userSelect = "none";
-  }, [dragMode]);
+  }, []);
 
-  // ── Global mouse handlers ──────────────────────────────────────────
+  // ── Global mouse move/up ──────────────────────────────────────────
   useEffect(() => {
+    const DRAG_THRESHOLD = 4;
     const onMove = (e) => {
+      if (mouseDownPos.current) {
+        const dx = e.clientX - mouseDownPos.current.x, dy = e.clientY - mouseDownPos.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) { didDrag.current = true; didDragRef.current = true; }
+      }
       if (isPanning.current) {
         const { mouseX, mouseY, tx, ty } = panStart.current;
         setCamera(prev => ({ ...prev, tx: tx + (e.clientX - mouseX), ty: ty + (e.clientY - mouseY) }));
       }
       if (nodeDragging.current) {
-        const { id, startMouseX, startMouseY, startNodeX, startNodeY } = nodeDragging.current;
+        const { latticeId, startMouseX, startMouseY, startPositions } = nodeDragging.current;
         const dx = (e.clientX - startMouseX) / cameraRef.current.scale;
         const dy = (e.clientY - startMouseY) / cameraRef.current.scale;
-        setNodePositions(prev => ({ ...prev, [id]: { x: startNodeX + dx, y: startNodeY + dy } }));
+        setLattices(prev => prev.map(l => {
+          if (l.id !== latticeId) return l;
+          const next = { ...l.nodePositions };
+          Object.entries(startPositions).forEach(([nid, { x, y }]) => { next[nid] = { x: x + dx, y: y + dy }; });
+          return { ...l, nodePositions: next };
+        }));
+      }
+      if (epicenterDragging.current) {
+        const { latticeId, startMouseX, startMouseY, startEpicenter } = epicenterDragging.current;
+        const dx = (e.clientX - startMouseX) / cameraRef.current.scale;
+        const dy = (e.clientY - startMouseY) / cameraRef.current.scale;
+        setLattices(prev => prev.map(l =>
+          l.id !== latticeId ? l : { ...l, epicenter: { x: startEpicenter.x + dx, y: startEpicenter.y + dy } }
+        ));
       }
       if (leftSplitDragging.current) {
-        const delta = e.clientX - leftSplitStart.current;
-        leftSplitStart.current = e.clientX;
+        const delta = e.clientX - leftSplitStart.current; leftSplitStart.current = e.clientX;
         setLeftW(w => Math.max(180, Math.min(500, w + delta)));
       }
       if (rightSplitDragging.current) {
-        const delta = e.clientX - rightSplitStart.current;
-        rightSplitStart.current = e.clientX;
+        const delta = e.clientX - rightSplitStart.current; rightSplitStart.current = e.clientX;
         setRightW(w => Math.max(200, Math.min(520, w - delta)));
       }
     };
     const onUp = () => {
+      if (isPanning.current && !didDrag.current) setSelectedIds(new Set());
       if (isPanning.current) { isPanning.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; }
-      nodeDragging.current = null;
+      nodeDragging.current = null; epicenterDragging.current = null; mouseDownPos.current = null;
       if (leftSplitDragging.current) { leftSplitDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; }
       if (rightSplitDragging.current) { rightSplitDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; }
     };
@@ -464,7 +691,7 @@ export default function App() {
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, []);
 
-  // ── Zoom ───────────────────────────────────────────────────────────
+  // ── Zoom ──────────────────────────────────────────────────────────
   const onWheel = useCallback((e) => {
     e.preventDefault();
     if (!panelRef.current) return;
@@ -482,7 +709,7 @@ export default function App() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [onWheel]);
 
-  // ── Panel collapse helpers ─────────────────────────────────────────
+  // ── Panel collapse ────────────────────────────────────────────────
   const toggleLeft = () => {
     if (leftCollapsed) { setLeftW(leftWBeforeCollapse.current); setLeftCollapsed(false); }
     else { leftWBeforeCollapse.current = leftW; setLeftW(0); setLeftCollapsed(true); }
@@ -492,49 +719,61 @@ export default function App() {
     else { rightWBeforeCollapse.current = rightW; setRightW(0); setRightCollapsed(true); }
   };
 
-  // ── Sub-pane height splitters ──────────────────────────────────────
-  const onLeftSplit12 = useCallback((delta) => {
-    setLeftPane1H(h => Math.max(80, h + delta));
-  }, []);
-  const onLeftSplit23 = useCallback((delta) => {
-    setLeftPane2H(h => Math.max(80, h + delta));
-  }, []);
-  const onRightSplit12 = useCallback((delta) => {
-    setRightPane1H(h => Math.max(100, h + delta));
-  }, []);
-  const onRightSplit23 = useCallback((delta) => {
-    setRightPane2H(h => Math.max(80, h + delta));
+  const onLeftSplit12 = useCallback((delta) => setLeftPane1H(h => Math.max(80, h + delta)), []);
+  const onLeftSplit23 = useCallback((delta) => setLeftPane2H(h => Math.max(80, h + delta)), []);
+  const onRightSplit12 = useCallback((delta) => setRightPane1H(h => Math.max(100, h + delta)), []);
+
+  // ── Toggle node selection ─────────────────────────────────────────
+  const toggleNodeSelect = useCallback((latticeId, nodeId) => {
+    const key = `${latticeId}:${nodeId}`;
+    setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
   }, []);
 
-  // ── Derived ────────────────────────────────────────────────────────
-  const submit = (val) => {
-    const n = parseInt(val ?? inputVal);
-    if (isNaN(n) || n < 2 || n > 200) { setError("Enter 2–200"); return; }
-    setError(""); setX(n);
-  };
+  // ── Derived per-lattice data ──────────────────────────────────────
+  const latticeViews = lattices.map((entry, idx) => {
+    const nodes = resolveNodes(entry);
+    const colorMap = buildOrderColorMap(nodes);
+    const fullNode = nodes[nodes.length - 1] ?? null;
+    const accent = LATTICE_ACCENTS[idx % LATTICE_ACCENTS.length];
 
-  const maxLevel = lattice?.maxLevel ?? 0;
-  const fullNode = lattice?.nodes?.[lattice.nodes.length - 1] ?? null;
-  const selectedNode = (lattice && selected !== null) ? lattice.nodes[selected] : null;
-  const colorMap = lattice ? buildOrderColorMap(lattice.nodes) : {};
-
-  const hlEdgeSet = new Set();
-  const adjacentNodes = new Set();
-  if (selected !== null && lattice) {
-    lattice.edges.forEach(([a, b], i) => {
-      if (a === selected || b === selected) { hlEdgeSet.add(i); adjacentNodes.add(a); adjacentNodes.add(b); }
+    // Edge + adjacent highlight for this lattice
+    const hlEdgeSet = new Set();
+    const adjacentNodes = new Set();
+    entry.base.edges.forEach(([a, b], i) => {
+      const ka = `${entry.id}:${a}`, kb = `${entry.id}:${b}`;
+      if (selectedIds.has(ka) || selectedIds.has(kb)) { hlEdgeSet.add(i); adjacentNodes.add(a); adjacentNodes.add(b); }
     });
-  }
 
-  const indexVal = (selectedNode && fullNode && fullNode.order % selectedNode.order === 0)
-    ? fullNode.order / selectedNode.order : "—";
+    const coprimes = findCoprimes(entry.x);
+    const zParts = zStructureParts(entry.x);
+    const expVal = groupExponent(coprimes, entry.x);
+
+    return { entry, nodes, colorMap, fullNode, accent, hlEdgeSet, adjacentNodes, coprimes, zParts, expVal };
+  });
+
+  // All selected nodes across all lattices (for right panel pane 2)
+  const allSelectedNodes = latticeViews.flatMap(({ entry, nodes, colorMap, fullNode }) =>
+    [...selectedIds]
+      .filter(k => k.startsWith(`${entry.id}:`))
+      .map(k => {
+        const nodeId = parseInt(k.split(":")[1]);
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) return null;
+        const indexVal = (fullNode && fullNode.order % node.order === 0) ? fullNode.order / node.order : "—";
+        return { node, colorMap, latticeId: entry.id, latticeX: entry.x, indexVal };
+      })
+      .filter(Boolean)
+  );
+
+  // Primary node for Morphisms pane (last selected overall)
+  const primarySel = allSelectedNodes[allSelectedNodes.length - 1] ?? null;
 
   const actualLeftW = leftCollapsed ? 0 : leftW;
   const actualRightW = rightCollapsed ? 0 : rightW;
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════
   //  RENDER
-  // ═══════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════
 
   return (
     <div ref={containerRef} style={{
@@ -548,9 +787,9 @@ export default function App() {
         .sky-scroll::-webkit-scrollbar-thumb:hover { background: ${C.borderHover}; }
       `}</style>
 
-      {/* ══════════════════════════════════════════════════════════════
+      {/* ══════════════════════════════════════════════════════
           LEFT PANEL
-      ══════════════════════════════════════════════════════════════ */}
+      ══════════════════════════════════════════════════════ */}
       <div style={{
         width: actualLeftW, flexShrink: 0, height: "100%",
         display: "flex", flexDirection: "column",
@@ -559,264 +798,266 @@ export default function App() {
         position: "relative",
         borderRight: actualLeftW > 0 ? `1px solid ${C.border}` : "none",
       }}>
-        {/* Collapse button */}
         <CollapseBtn collapsed={leftCollapsed} onToggle={toggleLeft} side="left" />
 
         {actualLeftW > 40 && <>
           {/* Pane 1: Graph Generation */}
           <Pane title="Graph Generation" height={leftPane1H}>
-            <div style={{ fontSize: 10, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 10 }}>Group</div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontSize: 10, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 8 }}>Add Lattice</div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
               <span style={{ color: C.inkMid, fontSize: 14 }}>U(</span>
               <input value={inputVal} onChange={e => setInputVal(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && submit()}
+                onKeyDown={e => e.key === "Enter" && addLattice(inputVal)}
                 style={{ background: C.bg, border: `1.5px solid ${C.borderHover}`, borderRadius: 4, color: C.ink, fontSize: 18, width: 64, padding: "4px 6px", textAlign: "center", fontFamily: "'Courier New', monospace", outline: "none" }} />
               <span style={{ color: C.inkMid, fontSize: 14 }}>)</span>
             </div>
-            {error && <div style={{ color: "#f87171", fontSize: 11, marginBottom: 8 }}>{error}</div>}
-            <button onClick={() => submit()} style={{
+            {error && <div style={{ color: "#f87171", fontSize: 10, marginBottom: 6 }}>{error}</div>}
+            <button onClick={() => addLattice(inputVal)} style={{
               width: "100%", background: C.ink, border: "none", borderRadius: 4,
               color: C.panelBg, fontSize: 10, letterSpacing: 3, textTransform: "uppercase",
-              padding: "8px 0", cursor: "pointer", fontFamily: "'Courier New', monospace", marginBottom: 12,
-            }}>Build Lattice</button>
-            <div style={{ fontSize: 10, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 8 }}>Presets</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+              padding: "7px 0", cursor: "pointer", fontFamily: "'Courier New', monospace", marginBottom: 10,
+            }}>Add Lattice</button>
+
+            <div style={{ fontSize: 10, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 6 }}>Presets</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
               {PRESETS.map(n => (
-                <button key={n} onClick={() => { setInputVal(String(n)); submit(String(n)); }}
-                  style={{ background: x === n ? C.ink : C.panelSurface, border: `1px solid ${x === n ? C.ink : C.border}`, borderRadius: 3, color: x === n ? C.panelBg : C.inkMid, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontFamily: "'Courier New', monospace" }}>
+                <button key={n} onClick={() => { setInputVal(String(n)); addLattice(String(n)); }}
+                  style={{ background: C.panelSurface, border: `1px solid ${C.border}`, borderRadius: 3, color: C.inkMid, fontSize: 10, padding: "3px 7px", cursor: "pointer", fontFamily: "'Courier New', monospace" }}>
                   {n}
                 </button>
               ))}
             </div>
-            {/* Display options */}
-            <div style={{ fontSize: 10, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 8 }}>Options</div>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: C.inkMid, cursor: "pointer", marginBottom: 6 }}>
-              <input type="checkbox" checked={showArrows} onChange={e => setShowArrows(e.target.checked)}
-                style={{ accentColor: C.ink }} />
-              Show direction arrows
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: C.inkMid, cursor: "pointer" }}>
-              <input type="checkbox" checked={dragMode} onChange={e => setDragMode(e.target.checked)}
-                style={{ accentColor: C.ink }} />
-              Node drag mode
-            </label>
+
+            {/* Active lattices list */}
+            {lattices.length > 0 && <>
+              <div style={{ fontSize: 10, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 6 }}>Active</div>
+              {lattices.map((l, idx) => {
+                const accent = LATTICE_ACCENTS[idx % LATTICE_ACCENTS.length];
+                return (
+                  <div key={l.id} style={{
+                    display: "flex", alignItems: "center", gap: 6, marginBottom: 4,
+                    padding: "5px 8px", borderRadius: 4, background: C.panelSurface,
+                    border: `1px solid ${C.border}`, borderLeft: `3px solid ${accent}`,
+                  }}>
+                    <span style={{ fontSize: 11, color: C.ink, fontFamily: "'Courier New', monospace", flex: 1 }}>U({l.x})</span>
+                    <span style={{ fontSize: 9, color: C.inkFaint }}>{l.base.nodes.length} subgroups</span>
+                    <button onClick={() => removeLattice(l.id)} style={{
+                      background: "none", border: "none", cursor: "pointer", color: C.inkFaint,
+                      fontSize: 12, padding: "0 2px", lineHeight: 1,
+                    }} title="Remove">×</button>
+                  </div>
+                );
+              })}
+            </>}
+
+            <div style={{ fontSize: 10, color: C.inkFaint, marginTop: 6, lineHeight: 1.6 }}>
+              Click nodes to select · drag selected to move
+            </div>
           </Pane>
 
           <HPSplitter onDrag={onLeftSplit12} />
 
           {/* Pane 2: Morphisms */}
           <Pane title="Morphisms" height={leftPane2H}>
-            {selectedNode ? (
-              <>
-                <div style={{ fontSize: 10, color: C.inkMid, marginBottom: 8 }}>
-                  Subgroups of <strong>{selectedNode.label}</strong>:
-                </div>
-                {lattice?.nodes.filter(n => {
-                  // n is a subgroup of selectedNode if all elements of n are in selectedNode
-                  const sElems = new Set(selectedNode.elements);
-                  return n.id !== selectedNode.id && n.elements.every(e => sElems.has(e));
-                }).sort((a, b) => a.order - b.order).map(n => {
-                  const col = orderColor(n.order, colorMap);
-                  return (
-                    <div key={n.id} onClick={() => setSelected(n.id)}
-                      style={{ background: C.selectedBg, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 8px", marginBottom: 4, cursor: "pointer", fontSize: 10, color: C.ink }}>
-                      <span style={{ color: col, fontWeight: 700 }}>|{n.order}|</span>
-                      {" "}
-                      <span style={{ fontFamily: "monospace" }}>{n.label}</span>
-                    </div>
-                  );
-                })}
-                <div style={{ marginTop: 10, fontSize: 10, color: C.inkFaint, letterSpacing: 1 }}>
-                  Index [G:H] = {indexVal}
-                </div>
-                {selectedNode.isCyclic && (
-                  <div style={{ marginTop: 6, fontSize: 10, color: C.inkMid }}>
-                    Cyclic — isomorphic to ℤ{selectedNode.order}
+            {primarySel ? (() => {
+              const { node, colorMap, latticeX, indexVal } = primarySel;
+              const lv = latticeViews.find(lv => lv.entry.id === primarySel.latticeId);
+              if (!lv) return null;
+              return (
+                <>
+                  <div style={{ fontSize: 10, color: C.inkMid, marginBottom: 8 }}>
+                    Subgroups of <strong style={{ fontFamily: "'Courier New', monospace" }}>{node.label}</strong>
+                    <span style={{ color: C.inkFaint, fontSize: 9 }}> in U({latticeX})</span>
                   </div>
-                )}
-              </>
-            ) : (
-              <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>
-                Select a node to see subgroup relationships.
-              </div>
+                  {lv.nodes.filter(n => {
+                    const sElems = new Set(node.elements);
+                    return n.id !== node.id && n.elements.every(e => sElems.has(e));
+                  }).sort((a, b) => a.order - b.order).map(n => {
+                    const col = orderColor(n.order, colorMap);
+                    const key = `${lv.entry.id}:${n.id}`;
+                    return (
+                      <div key={n.id}
+                        onClick={() => setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; })}
+                        style={{ background: selectedIds.has(key) ? C.selectedBg : C.panelSurface, border: `1px solid ${selectedIds.has(key) ? C.selectedBord : C.border}`, borderRadius: 4, padding: "4px 8px", marginBottom: 3, cursor: "pointer", fontSize: 10, color: C.ink }}>
+                        <span style={{ color: col, fontWeight: 700 }}>|{n.order}|</span>{" "}
+                        <span style={{ fontFamily: "monospace" }}>{n.label}</span>
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop: 8, fontSize: 10, color: C.inkFaint }}>Index [G:H] = {indexVal}</div>
+                  {node.isCyclic && <div style={{ marginTop: 4, fontSize: 10, color: C.inkMid }}>Cyclic ≅ ℤ{node.order}</div>}
+                </>
+              );
+            })() : (
+              <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>Select a node to see subgroup relationships.</div>
             )}
           </Pane>
 
           <HPSplitter onDrag={onLeftSplit23} />
 
-          {/* Pane 3: Key — fills remaining space */}
+          {/* Pane 3: Legend & Key — fills rest */}
           <Pane title="Legend & Key" style={{ flex: 1 }}>
-            {/* Shape key */}
-            <div style={{ fontSize: 9, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 8 }}>Shapes</div>
-            {[["circle", "Single generator"], ["square", "Pair generators"], ["triangle", "Triple generators"]].map(([shape, label]) => (
-              <div key={shape} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 11, color: C.inkMid }}>
-                <svg width={18} height={18}>
-                  {shape === "circle" && <circle cx={9} cy={9} r={7} fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
-                  {shape === "square" && <rect x={2} y={2} width={14} height={14} rx={2} fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
-                  {shape === "triangle" && <polygon points="9,2 16,16 2,16" fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
-                </svg>
-                {label}
-              </div>
-            ))}
-            <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 11, color: C.inkMid }}>
-              <svg width={26} height={12}><line x1={0} y1={6} x2={26} y2={6} stroke={C.inkMid} strokeWidth={2} /></svg>
-              One generating set
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 11, color: C.inkMid }}>
-              <svg width={26} height={12}><line x1={0} y1={6} x2={26} y2={6} stroke={C.inkMid} strokeWidth={2} strokeDasharray="5 3" /></svg>
-              Multiple generating sets
-            </div>
-            {/* Order color key */}
-            {lattice && colorMap && <>
-              <div style={{ fontSize: 9, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 8 }}>Order Colors</div>
-              {[...new Set(lattice.nodes.map(n => n.order))].sort((a, b) => a - b).map(ord => {
-                const col = orderColor(ord, colorMap);
-                const count = lattice.nodes.filter(n => n.order === ord).length;
-                return (
-                  <div key={ord} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                    <div style={{ width: 9, height: 9, borderRadius: "50%", background: col, flexShrink: 0 }} />
-                    <span style={{ fontSize: 11, color: C.inkMid }}>Order {ord}</span>
-                    <span style={{ fontSize: 10, color: C.inkFaint, marginLeft: "auto" }}>{count}×</span>
+            <div style={{ margin: "-12px -14px" }}>
+              {/* Shape legend */}
+              <Section label="Shapes & Lines" depth={0} defaultOpen={false}>
+                <SectionBody>
+                  {[["circle", "Single generator"], ["square", "Pair generators"], ["triangle", "Triple generators"]].map(([shape, label]) => (
+                    <div key={shape} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 11, color: C.inkMid }}>
+                      <svg width={18} height={18}>
+                        {shape === "circle"   && <circle cx={9} cy={9} r={7} fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
+                        {shape === "square"   && <rect x={2} y={2} width={14} height={14} rx={2} fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
+                        {shape === "triangle" && <polygon points="9,2 16,16 2,16" fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
+                      </svg>
+                      {label}
+                    </div>
+                  ))}
+                  <div style={{ borderTop: `1px solid ${C.border}`, margin: "6px 0" }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5, fontSize: 11, color: C.inkMid }}>
+                    <svg width={26} height={12}><line x1={0} y1={6} x2={26} y2={6} stroke={C.inkMid} strokeWidth={2} /></svg>
+                    One generating set
                   </div>
-                );
-              })}
-            </>}
-            {/* Arrow direction note */}
-            {showArrows && (
-              <div style={{ marginTop: 12, padding: "6px 8px", background: C.selectedBg, borderRadius: 4, border: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 2, textTransform: "uppercase", marginBottom: 3 }}>Arrows</div>
-                <div style={{ fontSize: 11, color: C.inkMid }}>▷ on edge = child → parent (subset relation)</div>
-              </div>
-            )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: C.inkMid }}>
+                    <svg width={26} height={12}><line x1={0} y1={6} x2={26} y2={6} stroke={C.inkMid} strokeWidth={2} strokeDasharray="5 3" /></svg>
+                    Multiple generating sets
+                  </div>
+                </SectionBody>
+              </Section>
+
+              {/* Per-lattice subgroup lists */}
+              {latticeViews.map(({ entry, nodes, colorMap, accent }) => (
+                <Section key={entry.id} label={`U(${entry.x}) — Subgroups`} depth={0} accent={accent} defaultOpen={false} badge={nodes.length}>
+                  <SectionBody noPad>
+                    <div style={{ padding: "6px 8px" }}>
+                      {[...nodes].sort((a, b) => a.order - b.order).map(node => {
+                        const key = `${entry.id}:${node.id}`;
+                        return (
+                          <SubgroupRow key={node.id} node={node} colorMap={colorMap}
+                            isSelected={selectedIds.has(key)}
+                            onToggle={() => setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; })} />
+                        );
+                      })}
+                    </div>
+                  </SectionBody>
+                </Section>
+              ))}
+            </div>
           </Pane>
         </>}
       </div>
 
-      {/* Left vertical splitter */}
+      {/* Left splitter */}
       <VSplitter onMouseDown={(e) => {
-        e.preventDefault(); leftSplitDragging.current = true;
-        leftSplitStart.current = e.clientX;
+        e.preventDefault(); leftSplitDragging.current = true; leftSplitStart.current = e.clientX;
         document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
         if (leftCollapsed) { setLeftCollapsed(false); setLeftW(leftWBeforeCollapse.current); }
       }} />
 
-      {/* ══════════════════════════════════════════════════════════════
-          CANVAS (center)
-      ══════════════════════════════════════════════════════════════ */}
+      {/* ══════════════════════════════════════════════════════
+          CANVAS
+      ══════════════════════════════════════════════════════ */}
       <div ref={panelRef} style={{
         flex: 1, height: "100%", position: "relative", overflow: "hidden",
         background: C.bg,
         backgroundImage: `linear-gradient(to right, ${C.gridLine} 1px, transparent 1px), linear-gradient(to bottom, ${C.gridLine} 1px, transparent 1px)`,
         backgroundSize: `${32 * camera.scale}px ${32 * camera.scale}px`,
         backgroundPosition: `${camera.tx}px ${camera.ty}px`,
-        cursor: dragMode ? "default" : "grab",
+        cursor: "grab",
       }} onMouseDown={onCanvasMouseDown}>
-        {/* Title */}
-        <div style={{ position: "absolute", top: 12, left: 0, right: 0, textAlign: "center", pointerEvents: "none", zIndex: 2 }}>
-          <span style={{ fontSize: 10, letterSpacing: 5, color: "#8a9a7a", textTransform: "uppercase" }}>
-            U({x}) — Subgroup Lattice
-          </span>
-        </div>
 
-        {lattice && lattice.nodes.length > 0 ? (
-          <svg ref={svgRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
-            <defs>
-              {/* Arrow marker for each active edge color — we use a generic one and color via stroke */}
-              <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L6,3 Z" fill={C.inkMid} opacity="0.6" />
-              </marker>
-              {/* Per-color arrow markers for highlighted edges */}
-              {lattice && Object.entries(colorMap).map(([ord, col]) => (
-                <marker key={ord} id={`arr-${ord}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                  <path d="M0,0 L0,6 L6,3 Z" fill={col} />
-                </marker>
-              ))}
-            </defs>
-
-            <g transform={`translate(${camera.tx}, ${camera.ty}) scale(${camera.scale})`}>
-              {/* ── EDGES ── */}
-              {lattice.edges.map(([a, b], i) => {
-                const na = lattice.nodes[a], nb = lattice.nodes[b];
-                const hl = hlEdgeSet.has(i);
-                // na is child (smaller subgroup), nb is parent (larger subgroup)
-                const col = hl ? orderColor(na.order, colorMap) : "#9aaa88";
-                const sw = hl ? 2.5 : 1.4;
-
-                // Midpoint for arrow
-                const mx = (na.x + nb.x) / 2;
-                const my = (na.y + nb.y) / 2;
-
-                // Arrow marker id: colored for highlighted, grey for normal
-                const markerId = hl ? `arr-${na.order}` : "arr";
-
-                return (
-                  <g key={i}>
-                    <line x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
-                      stroke={col} strokeWidth={sw} opacity={hl ? 1 : 0.6} strokeLinecap="round" />
-                    {showArrows && (
-                      // Small arrowhead at midpoint pointing toward parent (nb)
-                      // We draw a short invisible line segment at midpoint just to host the marker
-                      <line
-                        x1={mx - (nb.x - na.x) * 0.001}
-                        y1={my - (nb.y - na.y) * 0.001}
-                        x2={mx + (nb.x - na.x) * 0.001}
-                        y2={my + (nb.y - na.y) * 0.001}
-                        stroke={col} strokeWidth={sw} strokeLinecap="round"
-                        markerEnd={`url(#${markerId})`}
-                        opacity={hl ? 1 : 0.5}
-                      />
-                    )}
-                  </g>
-                );
-              })}
-
-              {/* ── OCCLUDER ── */}
-              {lattice.nodes.map(node => <ShapeOccluder key={`occ-${node.id}`} node={node} R={26} />)}
-
-              {/* ── NODES ── */}
-              {lattice.nodes.map(node => (
-                <ShapeNode key={node.id} node={node} colorMap={colorMap}
-                  isSelected={selected === node.id}
-                  isAdjacent={adjacentNodes.has(node.id) && selected !== node.id}
-                  onClick={() => setSelected(selected === node.id ? null : node.id)}
-                  dragMode={dragMode} onDragStart={onNodeDragStart} />
-              ))}
-            </g>
-          </svg>
-        ) : (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ color: "#8a9a7a", fontSize: 12, letterSpacing: 3 }}>COMPUTING…</div>
+        {lattices.length === 0 && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+            <span style={{ fontSize: 11, letterSpacing: 4, color: C.inkFaint, textTransform: "uppercase" }}>Add a lattice to begin</span>
           </div>
         )}
 
-        {/* Bottom controls */}
+        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
+          <defs>
+            <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 Z" fill={C.inkMid} opacity="0.6" />
+            </marker>
+            {latticeViews.flatMap(({ colorMap }) =>
+              Object.entries(colorMap).map(([ord, col]) => (
+                <marker key={`arr-${ord}-${col}`} id={`arr-${ord}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L6,3 Z" fill={col} />
+                </marker>
+              ))
+            )}
+          </defs>
+
+          <g transform={`translate(${camera.tx}, ${camera.ty}) scale(${camera.scale})`}>
+            {latticeViews.map(({ entry, nodes, colorMap, accent, hlEdgeSet, adjacentNodes }) => (
+              <g key={entry.id}>
+                {/* Edges */}
+                {entry.showEdges && entry.base.edges.map(([a, b], i) => {
+                  const na = nodes[a], nb = nodes[b];
+                  const hl = hlEdgeSet.has(i);
+                  const col = hl ? orderColor(na.order, colorMap) : "#9aaa88";
+                  const sw = hl ? 2.5 : 1.4;
+                  const mx = (na.x + nb.x) / 2, my = (na.y + nb.y) / 2;
+                  const markerId = hl ? `arr-${na.order}` : "arr";
+                  return (
+                    <g key={i}>
+                      <line x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={col} strokeWidth={sw} opacity={hl ? 1 : 0.6} strokeLinecap="round" />
+                      {entry.showArrows && (
+                        <line
+                          x1={mx - (nb.x - na.x) * 0.001} y1={my - (nb.y - na.y) * 0.001}
+                          x2={mx + (nb.x - na.x) * 0.001} y2={my + (nb.y - na.y) * 0.001}
+                          stroke={col} strokeWidth={sw} strokeLinecap="round"
+                          markerEnd={`url(#${markerId})`} opacity={hl ? 1 : 0.5} />
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* Occluders */}
+                {nodes.map(node => <ShapeOccluder key={`occ-${node.id}`} node={node} R={26} />)}
+
+                {/* Nodes */}
+                {nodes.map(node => {
+                  const key = `${entry.id}:${node.id}`;
+                  return (
+                    <ShapeNode key={node.id} node={node} colorMap={colorMap}
+                      isSelected={selectedIds.has(key)}
+                      isAdjacent={adjacentNodes.has(node.id) && !selectedIds.has(key)}
+                      onToggleSelect={nodeId => toggleNodeSelect(entry.id, nodeId)}
+                      onMouseDown={(nodeId, e) => onNodeMouseDown(entry.id, nodeId, e)} />
+                  );
+                })}
+
+                {/* Epicenter */}
+                {entry.showEpicenter && (
+                  <Epicenter
+                    x={entry.epicenter.x} y={entry.epicenter.y}
+                    accent={accent}
+                    onMouseDown={(e) => onEpicenterMouseDown(entry.id, e)} />
+                )}
+              </g>
+            ))}
+          </g>
+        </svg>
+
+        {/* Zoom reset */}
         <div style={{ position: "absolute", bottom: 14, right: 14, zIndex: 3, display: "flex", gap: 6 }}>
-          {Object.keys(nodePositions).length > 0 && (
-            <button onClick={() => setNodePositions({})} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 5, padding: "5px 9px", cursor: "pointer", fontSize: 9, color: C.inkMid, letterSpacing: 2, textTransform: "uppercase" }}>Reset nodes</button>
-          )}
           <button onClick={() => {
-            if (!panelRef.current || !baseLattice) return;
+            if (!panelRef.current) return;
             const r = panelRef.current.getBoundingClientRect();
-            const s = Math.min(1, Math.min(r.width / (baseLattice.W + 80), r.height / (baseLattice.H + 80)));
-            setCamera({ tx: (r.width - baseLattice.W * s) / 2, ty: (r.height - baseLattice.H * s) / 2, scale: s });
+            setCamera({ tx: r.width / 4, ty: r.height / 4, scale: 0.75 });
           }} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 5, padding: "5px 9px", cursor: "pointer", fontSize: 9, color: C.inkMid, letterSpacing: 2, textTransform: "uppercase" }}>
             {Math.round(camera.scale * 100)}% ↺
           </button>
         </div>
       </div>
 
-      {/* Right vertical splitter */}
+      {/* Right splitter */}
       <VSplitter onMouseDown={(e) => {
-        e.preventDefault(); rightSplitDragging.current = true;
-        rightSplitStart.current = e.clientX;
+        e.preventDefault(); rightSplitDragging.current = true; rightSplitStart.current = e.clientX;
         document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
         if (rightCollapsed) { setRightCollapsed(false); setRightW(rightWBeforeCollapse.current); }
       }} />
 
-      {/* ══════════════════════════════════════════════════════════════
+      {/* ══════════════════════════════════════════════════════
           RIGHT PANEL
-      ══════════════════════════════════════════════════════════════ */}
+      ══════════════════════════════════════════════════════ */}
       <div style={{
         width: actualRightW, flexShrink: 0, height: "100%",
         display: "flex", flexDirection: "column",
@@ -828,96 +1069,110 @@ export default function App() {
         <CollapseBtn collapsed={rightCollapsed} onToggle={toggleRight} side="right" />
 
         {actualRightW > 40 && <>
-          {/* Pane 1: Group Info */}
+          {/* Pane 1: Group Info — one Section per lattice */}
           <Pane title="Group Info" height={rightPane1H}>
-            {lattice && fullNode ? (() => {
-              const coprimes = findCoprimes(x);
-              const zParts = zStructureParts(x);
-              const expVal = groupExponent(coprimes, x);
-              const stats = [
-                [`|U(${x})|`, fullNode.order], ["φ(x)", fullNode.order],
-                ["Subgroups", lattice.nodes.length], ["Levels", maxLevel + 1],
-                ["Hasse edges", lattice.edges.length],
-                ["Rank", fullNode.generators.length > 0 ? fullNode.generators[0].length : 1],
-                ["Exponent", expVal], ["Abelian", "yes"],
-              ];
-              return (
-                <>
-                  <div style={{ marginBottom: 12, padding: "6px 8px", background: C.statsRow, borderRadius: 4, border: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 9, letterSpacing: 3, color: C.inkFaint, textTransform: "uppercase", marginBottom: 3 }}>Isomorphism Type</div>
-                    <div style={{ fontSize: 14, fontWeight: "700", color: C.ink, fontFamily: "'Courier New', monospace", wordBreak: "break-all" }}>
-                      U({x}) ≅ {formatZ(zParts)}
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px" }}>
-                    {stats.map(([k, v]) => <StatPill key={k} label={k} value={String(v)} accent={k === "Abelian" ? "#4ade80" : k === "Rank" && v > 1 ? "#c084fc" : undefined} />)}
-                  </div>
-                </>
-              );
-            })() : <div style={{ color: C.inkFaint, fontSize: 11 }}>—</div>}
+            {latticeViews.length === 0
+              ? <div style={{ color: C.inkFaint, fontSize: 11 }}>No lattices added.</div>
+              : <div style={{ margin: "-12px -14px" }}>
+                  {latticeViews.map(({ entry, nodes, fullNode, colorMap, accent, coprimes, zParts, expVal }) => (
+                    <Section key={entry.id} label={`U(${entry.x})`} depth={0} accent={accent} defaultOpen={latticeViews.length === 1}>
+                      {/* Stats */}
+                      <Section label="Stats" depth={1} defaultOpen={false}>
+                        <SectionBody>
+                          <div style={{ marginBottom: 8, padding: "5px 8px", background: C.statsRow, borderRadius: 4, border: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: 8, letterSpacing: 2, color: C.inkFaint, textTransform: "uppercase", marginBottom: 2 }}>Isomorphism Type</div>
+                            <div style={{ fontSize: 13, fontWeight: "700", color: C.ink, fontFamily: "'Courier New', monospace", wordBreak: "break-all" }}>
+                              U({entry.x}) ≅ {formatZ(zParts)}
+                            </div>
+                          </div>
+                        </SectionBody>
+                        {fullNode && [
+                          [`|U(${entry.x})|`, fullNode.order],
+                          ["Subgroups", nodes.length],
+                          ["Levels",    (entry.base.maxLevel ?? 0) + 1],
+                          ["Hasse edges", entry.base.edges.length],
+                          ["Rank",     fullNode.generators.length > 0 ? fullNode.generators[0].length : 1],
+                          ["Exponent", expVal],
+                          ["Abelian",  "yes"],
+                        ].map(([k, v]) => <SectionRow key={k} label={k} value={String(v)} accent={k === "Abelian" ? "#4ade80" : undefined} />)}
+                      </Section>
+
+                      {/* Display controls */}
+                      <Section label="Display" depth={1} defaultOpen={false}>
+                        <SectionToggle label="Show Edges"
+                          checked={entry.showEdges}
+                          onChange={v => updateLattice(entry.id, { showEdges: v })} />
+                        <SectionToggle label="Show Arrows"
+                          checked={entry.showArrows}
+                          onChange={v => updateLattice(entry.id, { showArrows: v })} />
+                        <SectionToggle label="Show Epicenter ☉"
+                          checked={entry.showEpicenter}
+                          onChange={v => updateLattice(entry.id, { showEpicenter: v })} />
+                        <SectionBody>
+                          <div style={{ fontSize: 9, color: C.inkFaint, lineHeight: 1.6 }}>
+                            Drag the ☉ marker on the canvas to move the entire lattice.
+                          </div>
+                        </SectionBody>
+                      </Section>
+                    </Section>
+                  ))}
+                </div>
+            }
           </Pane>
 
           <HPSplitter onDrag={onRightSplit12} />
 
-          {/* Pane 2: Selected Subgroup */}
-          <Pane title="Selected Subgroup" height={rightPane2H}>
-            {selectedNode ? (() => {
-              const col = orderColor(selectedNode.order, colorMap);
-              return (
-                <>
-                  <div style={{ fontSize: 12, color: C.ink, fontFamily: "'Courier New', monospace", marginBottom: 10, wordBreak: "break-all", lineHeight: 1.5 }}>
-                    {selectedNode.label}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "5px 8px", marginBottom: 10 }}>
-                    {[["Order", selectedNode.order], ["Level", selectedNode.level], ["Index", indexVal]].map(([k, v]) => (
-                      <div key={k}>
-                        <div style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1, textTransform: "uppercase" }}>{k}</div>
-                        <div style={{ fontSize: 14, color: col, fontWeight: "700", marginTop: 1 }}>{String(v)}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 2, textTransform: "uppercase", marginBottom: 5 }}>
-                    {selectedNode.isCyclic ? "Cyclic" : selectedNode.shape === "square" ? "Non-cyclic — pair gens" : selectedNode.shape === "triangle" ? "Non-cyclic — triple gens" : "Trivial"}
-                  </div>
-                  <div style={{ fontSize: 11, color: C.inkMid, lineHeight: 1.8, wordBreak: "break-all" }}>
-                    {selectedNode.genAll}
-                  </div>
-                </>
-              );
-            })() : <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>Click a node to inspect it.</div>}
-          </Pane>
-
-          <HPSplitter onDrag={onRightSplit23} />
-
-          {/* Pane 3: All Subgroups — fills rest */}
-          <Pane title="All Subgroups" style={{ flex: 1 }}>
-            {[...(lattice?.nodes ?? [])].sort((a, b) => a.order - b.order).map(node => {
-              const col = orderColor(node.order, colorMap);
-              const isSel = selected === node.id;
-              return (
-                <div key={node.id} onClick={() => setSelected(isSel ? null : node.id)} style={{
-                  background: isSel ? C.selectedBg : "transparent",
-                  border: `1px solid ${isSel ? C.selectedBord : C.border}`,
-                  borderRadius: 4, padding: "6px 8px", marginBottom: 4,
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
-                  transition: "background 0.1s, border-color 0.1s",
-                }}>
-                  <svg width={14} height={14} style={{ flexShrink: 0 }}>
-                    {node.shape === "circle" && <circle cx={7} cy={7} r={5} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
-                    {node.shape === "square" && <rect x={1.5} y={1.5} width={11} height={11} rx={1.5} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
-                    {node.shape === "triangle" && <polygon points="7,1.5 13,12.5 1,12.5" fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
-                  </svg>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10, color: C.ink, fontFamily: "'Courier New', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.label}</div>
-                    <div style={{ fontSize: 9, color: C.inkFaint, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.genAll}</div>
-                  </div>
-                  <div style={{ flexShrink: 0, textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: col, fontWeight: "700" }}>|{node.order}|</div>
-                    <div style={{ fontSize: 9, color: C.inkFaint, textTransform: "uppercase" }}>{node.isCyclic ? "cyc" : node.order === 1 ? "triv" : "non"}</div>
-                  </div>
+          {/* Pane 2: Selected nodes — fills rest */}
+          <Pane title={`Selected${allSelectedNodes.length > 1 ? ` (${allSelectedNodes.length})` : ""}`} style={{ flex: 1 }}>
+            {allSelectedNodes.length > 0
+              ? <div style={{ margin: "-12px -14px" }}>
+                  {allSelectedNodes.map(({ node, colorMap, latticeId, latticeX, indexVal }) => {
+                    const col = orderColor(node.order, colorMap);
+                    const cyclicLabel = node.order === 1 ? "Trivial" : node.isCyclic ? "Cyclic" : node.shape === "square" ? "Non-cyclic · pair gens" : "Non-cyclic · triple gens";
+                    return (
+                      <Section key={`${latticeId}:${node.id}`} label={node.shortLabel} badge={`ord ${node.order}`} accent={col} depth={0} defaultOpen={false}>
+                        <Section label="Label & Style" depth={1} defaultOpen={false}>
+                          <SectionRow label="Group" value={`U(${latticeX})`} />
+                          <SectionRow label="Type" value={cyclicLabel} />
+                          {node.isCyclic && <SectionRow label="Iso" value={`ℤ${node.order}`} accent={col} />}
+                          <SectionBody>
+                            <div style={{ fontSize: 11, color: C.ink, fontFamily: "'Courier New', monospace", wordBreak: "break-all", lineHeight: 1.5 }}>{node.label}</div>
+                          </SectionBody>
+                        </Section>
+                        <Section label="Info" depth={1} defaultOpen={false}>
+                          <Section label="Metrics" depth={2} defaultOpen={false}>
+                            <SectionRow label="Order" value={String(node.order)} accent={col} />
+                            <SectionRow label="Level" value={String(node.level)} />
+                            <SectionRow label="Index" value={String(indexVal)} />
+                          </Section>
+                          <Section label="Elements" depth={2} defaultOpen={false} badge={node.elements.length}>
+                            <SectionBody>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {node.elements.map(el => (
+                                  <span key={el} style={{ fontSize: 11, color: col, fontWeight: "700", fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "2px 7px", border: `1px solid ${C.border}` }}>{el}</span>
+                                ))}
+                              </div>
+                            </SectionBody>
+                          </Section>
+                          <Section label="Generators" depth={2} defaultOpen={false} badge={node.generators.length}>
+                            <SectionBody>
+                              {node.generators.length === 0
+                                ? <span style={{ fontSize: 11, color: C.inkFaint }}>∅ trivial</span>
+                                : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                    {node.generators.map((g, i) => (
+                                      <div key={i} style={{ fontSize: 11, color: C.inkMid, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "3px 8px", border: `1px solid ${C.border}` }}>⟨{g.join(", ")}⟩</div>
+                                    ))}
+                                  </div>
+                              }
+                            </SectionBody>
+                          </Section>
+                        </Section>
+                      </Section>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              : <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>Click nodes to select them.</div>
+            }
           </Pane>
         </>}
       </div>

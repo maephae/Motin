@@ -179,106 +179,6 @@ function buildOrderColorMap(nodes) {
 function orderColor(order, colorMap) { return colorMap[order] ?? "#9aaa88"; }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  MORPHISM COLORS & MATH
-// ═══════════════════════════════════════════════════════════════════════
-
-const MORPHISM_COLORS = ["#f59e0b","#10b981","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16"];
-
-/**
- * analyzeMorphism — takes a list of strands (using the new from/to fields) and
- * returns homomorphism properties as well as a list of label objects for the UI.
- */
-function analyzeMorphism(strands, lattices, latticeViews) {
-  if (!strands.length) return { isHomo: null, isInjective: null, isSurjective: null, kernel: [], image: [], strandLabels: [] };
-
-  // ---- Build human‑readable labels for each strand ----
-  const strandLabels = strands.map(s => {
-    const srcLV = latticeViews.find(lv => lv.entry.id === s.fromLatticeId);
-    const tgtLV = latticeViews.find(lv => lv.entry.id === s.toLatticeId);
-    const srcN = srcLV?.nodes.find(n => n.id === s.fromNodeId);
-    const tgtN = tgtLV?.nodes.find(n => n.id === s.toNodeId);
-    return {
-      from: srcN ? `${srcN.shortLabel} ⊆ U(${srcLV.entry.x})` : "?",
-      to:   tgtN ? `${tgtN.shortLabel} ⊆ U(${tgtLV.entry.x})` : "?",
-      fromOrder: srcN?.order ?? 0,
-      toOrder:   tgtN?.order ?? 0,
-    };
-  });
-
-  // ---- Build a map from source lattice‑element → target lattice‑element ----
-  const elementMap = new Map(); // key `${latticeId}:${elem}` → { latticeId, el }
-  for (const s of strands) {
-    const srcLV = latticeViews.find(lv => lv.entry.id === s.fromLatticeId);
-    const tgtLV = latticeViews.find(lv => lv.entry.id === s.toLatticeId);
-    if (!srcLV || !tgtLV) continue;
-    const srcNode = srcLV.nodes.find(n => n.id === s.fromNodeId);
-    const tgtNode = tgtLV.nodes.find(n => n.id === s.toNodeId);
-    if (!srcNode || !tgtNode) continue;
-    srcNode.elements.forEach((el, i) => {
-      const k = `${s.fromLatticeId}:${el}`;
-      if (!elementMap.has(k))
-        elementMap.set(k, { latticeId: s.toLatticeId, el: tgtNode.elements[i % tgtNode.elements.length] });
-    });
-  }
-  if (!elementMap.size) return { isHomo: null, isInjective: null, isSurjective: null, kernel: [], image: [], strandLabels };
-
-  // ---- Homomorphism check (only when all strands belong to a single source & single target) ----
-  const srcIds = [...new Set(strands.map(s => s.fromLatticeId))];
-  const tgtIds = [...new Set(strands.map(s => s.toLatticeId))];
-  let isHomo = null;
-  if (srcIds.length === 1 && tgtIds.length === 1) {
-    const srcLattice = lattices.find(l => l.id === srcIds[0]);
-    const tgtLattice = lattices.find(l => l.id === tgtIds[0]);
-    if (srcLattice && tgtLattice) {
-      const xSrc = srcLattice.x;
-      const xTgt = tgtLattice.x;
-      isHomo = true;
-      const domainElems = [...elementMap.keys()].map(k => parseInt(k.split(":")[1]));
-      outer: for (const a of domainElems) {
-        for (const b of domainElems) {
-          const ab = (a * b) % xSrc;
-          const fa = elementMap.get(`${srcIds[0]}:${a}`)?.el;
-          const fb = elementMap.get(`${srcIds[0]}:${b}`)?.el;
-          const fab = elementMap.get(`${srcIds[0]}:${ab}`)?.el;
-          if (fa == null || fb == null || fab == null || fab !== (fa * fb) % xTgt) {
-            isHomo = false;
-            break outer;
-          }
-        }
-      }
-    }
-  }
-
-  // ---- Kernel (domain elements sent to the identity 1 in the target) ----
-  const kernel = [...elementMap.entries()]
-    .filter(([, v]) => v.el === 1)
-    .map(([k]) => parseInt(k.split(":")[1]))
-    .sort((a, b) => a - b);
-
-  // ---- Image (set of target elements reached) ----
-  const image = [...new Set([...elementMap.values()].map(v => v.el))].sort((a, b) => a - b);
-
-  // ---- Injectivity ----
-  const seen = new Set();
-  let isInjective = true;
-  for (const v of elementMap.values()) {
-    const key = `${v.latticeId}:${v.el}`;
-    if (seen.has(key)) { isInjective = false; break; }
-    seen.add(key);
-  }
-
-  // ---- Surjectivity ----
-  const tgtElems = new Set();
-  for (const s of strands) {
-    const tgtLV = latticeViews.find(lv => lv.entry.id === s.toLatticeId);
-    tgtLV?.nodes.find(n => n.id === s.toNodeId)?.elements.forEach(e => tgtElems.add(e));
-  }
-  const isSurjective = tgtElems.size > 0 && [...tgtElems].every(e => image.includes(e));
-
-  return { isHomo, isInjective, isSurjective, kernel, image, strandLabels };
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 //  PALETTE
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -475,9 +375,9 @@ function SubgroupRow({ node, colorMap, isSelected, onToggle }) {
       transition: "background 0.1s, border-color 0.1s",
     }}>
       <svg width={13} height={13} style={{ flexShrink: 0 }}>
-        {node.shape === "circle"   && <circle cx={6.5} cy={6.5} r={5} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
-        {node.shape === "square"   && <rect x={1} y={1} width={11} height={11} rx={1.5} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
-        {node.shape === "triangle" && <polygon points="6.5,1 12.5,12 0.5,12" fill="none" stroke={col} strokeWidth={1.5} strokeDasharray={node.multiGen ? "4 2" : undefined} />}
+        {node.shape === "circle"   && <circle cx={9} cy={9} r={7} fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
+        {node.shape === "square"   && <rect x={2} y={2} width={14} height={14} rx={2} fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
+        {node.shape === "triangle" && <polygon points="9,2 16,16 2,16" fill="none" stroke={C.inkMid} strokeWidth={1.5} />}
       </svg>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 10, color: C.ink, fontFamily: "'Courier New', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.label}</div>
@@ -510,10 +410,21 @@ function ShapeOccluder({ node, R }) {
   return <polygon points={`${node.x},${node.y - h * 0.68} ${node.x - h * 0.72},${node.y + h * 0.46} ${node.x + h * 0.72},${node.y + h * 0.46}`} fill={fill} />;
 }
 
-// Module-level ref for click‑vs‑drag detection
+/* ── Module‑level ref for click‑vs‑drag detection ───────────────────────────── */
 const didDragRef = { current: false };
 
-function ShapeNode({ node, latticeId, colorMap, isSelected, isAdjacent, isDrawMode, onToggleSelect, onMouseDown }) {
+/* ── ShapeNode – now supports custom‑strand drag ─────────────────────────────── */
+function ShapeNode({
+  node,
+  colorMap,
+  isSelected,
+  isAdjacent,
+  onToggleSelect,
+  onMouseDown,          // existing node‑drag (only when node is selected)
+  onStartStrand,        // called when an un‑selected node becomes strand source
+  allowSelect = true,
+  nodeKey,
+}) {
   const col = orderColor(node.order, colorMap);
   const R = 26;
   const g = nodeGeometry(node, R);
@@ -533,25 +444,29 @@ function ShapeNode({ node, latticeId, colorMap, isSelected, isAdjacent, isDrawMo
   }
 
   return (
-    <g data-node="true" data-lattice-id={String(latticeId)} data-node-id={String(node.id)}
-      style={{ cursor: isDrawMode ? "crosshair" : isSelected ? "grab" : "pointer" }}
+    <g
+      data-node="true"
+      data-key={nodeKey}
+      style={{ cursor: isSelected ? "grab" : "pointer" }}
       onMouseDown={e => {
         didDragRef.current = false;
-        if (isDrawMode) {
-          onMouseDown(node.id, e);
-          e.stopPropagation();
-          return;
-        }
         if (isSelected) {
-          onMouseDown(node.id, e);
+          // regular node‑drag (move a selected node / group)
+          onMouseDown && onMouseDown(node.id, e);
+          e.stopPropagation();
+        } else if (onStartStrand) {
+          // start a custom strand from this node
+          onStartStrand(node.id, e);
           e.stopPropagation();
         }
       }}
       onClick={e => {
-        if (!isDrawMode && !didDragRef.current) onToggleSelect(node.id);
+        if (!didDragRef.current && allowSelect) {
+          onToggleSelect(node.id);
+        }
         e.stopPropagation();
-      }}>
-      {isDrawMode && <circle cx={node.x} cy={node.y} r={33} fill="none" stroke={C.inkFaint} strokeWidth={1} strokeDasharray="3 3" opacity={0.45} />}
+      }}
+    >
       {shapeEl}
       <text x={node.x} y={node.y + 1} textAnchor="middle" dominantBaseline="middle"
         fontSize={9.5} fill={textCol} fontFamily="'Courier New', monospace" fontWeight="600"
@@ -560,10 +475,7 @@ function ShapeNode({ node, latticeId, colorMap, isSelected, isAdjacent, isDrawMo
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  EPICENTER — alchemical sun ☉ — draggable lattice anchor
-// ═══════════════════════════════════════════════════════════════════════
-
+/* ── EPICENTER (unchanged) ─────────────────────────────────────────────── */
 function Epicenter({ x, y, accent, onMouseDown }) {
   const R = 14;
   return (
@@ -589,12 +501,12 @@ function Epicenter({ x, y, accent, onMouseDown }) {
 let nextLatticeId = 1;
 function makeLatticeEntry(xVal, canvasW, canvasH) {
   const base = computeLattice(xVal);
-  // Default epicenter = centre of canvas in world coords (will be set properly after mount)
+  // Default epicenter = center of canvas in world coords (will be set properly after mount)
   return {
     id: nextLatticeId++,
     x: xVal,
-    base,
-    nodePositions: {},
+    base,          // raw computed lattice (node positions are relative to epicenter=0,0)
+    nodePositions: {},  // per-node overrides relative to epicenter
     epicenter: { x: canvasW / 2, y: canvasH / 2 },
     showArrows: true,
     showEdges: true,
@@ -623,16 +535,15 @@ export default function App() {
   const [inputVal, setInputVal] = useState("18");
   const [error, setError] = useState("");
 
-  // ── Selection — keyed by `${latticeId}:${nodeId}` ─────────────────
+  // ── Selection — keyed by `${latticeId}:${nodeId}` ─────────────────────
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  // ── Morphisms ──────────────────────────────────────────────────────
-  const [morphisms, setMorphisms] = useState([]);
-  const [activeMorphismId, setActiveMorphismId] = useState(null);
-  const [strandPreview, setStrandPreview] = useState(null); // { x1,y1,x2,y2 }
-  const strandDragging = useRef(null); // { fromLatticeId, fromNodeId }
-  const activeMorphismIdRef = useRef(null);
-  useEffect(() => { activeMorphismIdRef.current = activeMorphismId; }, [activeMorphismId]);
+  /* ── New: custom‑morphism state ───────────────────────────────────── */
+  const morphismIdRef = useRef(1);                     // unique ids for morphisms
+  const [morphisms, setMorphisms] = useState([]);    // [{id, name, color, strands:[{id, source, target}]}]
+  const [activeMorphId, setActiveMorphId] = useState(null); // which morphism is currently active
+  const [tempStrand, setTempStrand] = useState(null); // preview line while dragging a strand
+  const strandDrag = useRef(null);                     // {sourceKey, srcPos}
 
   // ── Panel widths ───────────────────────────────────────────────────
   const [leftW, setLeftW] = useState(270);
@@ -644,14 +555,10 @@ export default function App() {
 
   // ── Left pane heights ──────────────────────────────────────────────
   const [leftPane1H, setLeftPane1H] = useState(210);
-  const [leftPane2H, setLeftPane2H] = useState(160);
-  const [leftPane3H, setLeftPane3H] = useState(160);
+  const [leftPane2H, setLeftPane2H] = useState(180);
 
   // ── Right pane heights ─────────────────────────────────────────────
-  const [rightPane1H, setRightPane1H] = useState(240);
-  const [rightPane2H, setRightPane2H] = useState(220);
-  const onRightSplit12 = useCallback((delta) => setRightPane1H(h => Math.max(100, h + delta)), []);
-  const onRightSplit23 = useCallback((delta) => setRightPane2H(h => Math.max(80, h + delta)), []);
+  const [rightPane1H, setRightPane1H] = useState(280);
 
   // ── Camera ────────────────────────────────────────────────────────
   const [camera, setCamera] = useState({ tx: 0, ty: 0, scale: 1 });
@@ -671,8 +578,9 @@ export default function App() {
 
   // ── Node drag ────────────────────────────────────────────────────
   const nodeDragging = useRef(null);
-  // { latticeId, startMouseX, startMouseY, startPositions: {nodeId: {x,y}} }
+  // { latticeId, startMouseX, startMouseY, startPositions: {nodeId: {x,y}}, startEpicenter: {x,y} }
   const epicenterDragging = useRef(null);
+  // { latticeId, startMouseX, startMouseY, startEpicenter: {x,y} }
   const mouseDownPos = useRef(null);
   const didDrag = useRef(false);
 
@@ -684,18 +592,19 @@ export default function App() {
     setLattices([entry]);
   }, []);
 
-  // ── Helpers to update a single lattice entry immutably ────────────
+  // ── Helpers to update a single lattice entry immutably ────────────────
   const updateLattice = useCallback((id, patch) => {
     setLattices(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
   }, []);
 
-  // ── Add lattice ───────────────────────────────────────────────────
+  // ── Add lattice ───────────────────────────────────────────────────────
   const addLattice = useCallback((xVal) => {
     const n = parseInt(xVal);
     if (isNaN(n) || n < 2 || n > 200) { setError("Enter 2–200"); return; }
     setError("");
     const r = panelRef.current?.getBoundingClientRect();
     const cw = r?.width ?? 800, ch = r?.height ?? 600;
+    // Offset each new lattice slightly so they don't stack exactly
     const offset = lattices.length * 40;
     const entry = makeLatticeEntry(n, cw, ch);
     entry.epicenter = { x: cw / 2 + offset, y: ch / 2 + offset };
@@ -712,27 +621,8 @@ export default function App() {
     });
   }, []);
 
-  // ── Node mouse‑down (handles both normal dragging and strand start) ─────
+  // ── Node drag start ───────────────────────────────────────────────
   const onNodeMouseDown = useCallback((latticeId, nodeId, e) => {
-    // ── Strand‑draw mode ─────────────────────
-    if (activeMorphismId !== null) {
-      e.preventDefault(); e.stopPropagation();
-      didDrag.current = false; didDragRef.current = false;
-      const entry = lattices.find(l => l.id === latticeId);
-      if (!entry) return;
-      const nodes = resolveNodes(entry);
-      const node = nodes.find(n => n.id === nodeId);
-      if (!node) return;
-      const cam = cameraRef.current;
-      const sx = node.x * cam.scale + cam.tx;
-      const sy = node.y * cam.scale + cam.ty;
-      strandDragging.current = { fromLatticeId: latticeId, fromNodeId: nodeId };
-      setStrandPreview({ x1: sx, y1: sy, x2: sx, y2: sy });
-      mouseDownPos.current = { x: e.clientX, y: e.clientY };
-      return;
-    }
-
-    // ── Normal node dragging ─────────────────
     const key = `${latticeId}:${nodeId}`;
     if (!selectedIds.has(key)) return;
     e.preventDefault(); e.stopPropagation();
@@ -740,19 +630,22 @@ export default function App() {
     const entry = lattices.find(l => l.id === latticeId);
     if (!entry) return;
     const nodes = resolveNodes(entry);
+    // Snapshot start positions of all selected nodes in this lattice
     const startPositions = {};
     for (const k of selectedIds) {
       const [lid, nid] = k.split(":").map(Number);
       if (lid !== latticeId) continue;
       const n = nodes.find(n => n.id === nid);
-      if (n) startPositions[nid] = {
-        x: (entry.nodePositions[nid]?.x ?? entry.base.nodes[nid]?.x) ?? n.x - entry.epicenter.x + entry.base.W / 2,
-        y: (entry.nodePositions[nid]?.y ?? entry.base.nodes[nid]?.y) ?? n.y - entry.epicenter.y + entry.base.H / 2,
-      };
+      if (n) {
+        startPositions[nid] = {
+          x: (entry.nodePositions[nid]?.x ?? entry.base.nodes[nid]?.x) ?? n.x - entry.epicenter.x + entry.base.W / 2,
+          y: (entry.nodePositions[nid]?.y ?? entry.base.nodes[nid]?.y) ?? n.y - entry.epicenter.y + entry.base.H / 2,
+        };
+      }
     }
     nodeDragging.current = { latticeId, startMouseX: e.clientX, startMouseY: e.clientY, startPositions };
     mouseDownPos.current = { x: e.clientX, y: e.clientY };
-  }, [lattices, selectedIds, activeMorphismId]);
+  }, [lattices, selectedIds]);
 
   // ── Epicenter drag start ──────────────────────────────────────────
   const onEpicenterMouseDown = useCallback((latticeId, e) => {
@@ -780,22 +673,65 @@ export default function App() {
     document.body.style.userSelect = "none";
   }, []);
 
-  // ── Global mouse move / up (panning, node drag, epicenter drag, strand draw) ─────
+  /* ── Custom Morphism helpers ─────────────────────────────────────── */
+  const startStrandDrag = useCallback((latticeId, nodeId, e) => {
+    if (activeMorphId === null) return;
+    const entry = lattices.find(l => l.id === latticeId);
+    if (!entry) return;
+    const srcNode = resolveNodes(entry).find(n => n.id === nodeId);
+    if (!srcNode) return;
+    strandDrag.current = {
+      sourceKey: `${latticeId}:${nodeId}`,
+      srcPos: { x: srcNode.x, y: srcNode.y },
+    };
+    setTempStrand({ src: { x: srcNode.x, y: srcNode.y }, x: srcNode.x, y: srcNode.y });
+  }, [activeMorphId, lattices]);
+
+  const deleteStrand = useCallback((morphId, strandId) => {
+    setMorphisms(prev =>
+      prev.map(m => (m.id !== morphId ? m : { ...m, strands: m.strands.filter(s => s.id !== strandId) }))
+    );
+  }, []);
+
+  const addMorphism = useCallback(() => {
+    const id = morphismIdRef.current++;
+    const newMorph = {
+      id,
+      name: `M${id}`,
+      color: ORDER_COLS[(id - 1) % ORDER_COLS.length],
+      strands: [],
+    };
+    setMorphisms(prev => [...prev, newMorph]);
+    setActiveMorphId(id);
+  }, []);
+
+  const removeMorphism = useCallback(mId => {
+    setMorphisms(prev => prev.filter(m => m.id !== mId));
+    if (activeMorphId === mId) setActiveMorphId(null);
+  }, [activeMorphId]);
+
+  // ── Global mouse‑move / mouse‑up (panning, node drag, epicenter drag,
+  //      strand drag, splitters) ─────────────────────────────────────
   useEffect(() => {
     const DRAG_THRESHOLD = 4;
     const onMove = (e) => {
+      /* threshold for click‑vs‑drag */
       if (mouseDownPos.current) {
-        const dx = e.clientX - mouseDownPos.current.x, dy = e.clientY - mouseDownPos.current.y;
-        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) { didDrag.current = true; didDragRef.current = true; }
+        const dx = e.clientX - mouseDownPos.current.x;
+        const dy = e.clientY - mouseDownPos.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+          didDrag.current = true;
+          didDragRef.current = true;
+        }
       }
+
+      /* panning */
       if (isPanning.current) {
         const { mouseX, mouseY, tx, ty } = panStart.current;
         setCamera(prev => ({ ...prev, tx: tx + (e.clientX - mouseX), ty: ty + (e.clientY - mouseY) }));
       }
-      if (strandDragging.current) {
-        // update preview line (screen space)
-        setStrandPreview(prev => prev ? { ...prev, x2: e.clientX, y2: e.clientY } : null);
-      }
+
+      /* node dragging */
       if (nodeDragging.current) {
         const { latticeId, startMouseX, startMouseY, startPositions } = nodeDragging.current;
         const dx = (e.clientX - startMouseX) / cameraRef.current.scale;
@@ -809,6 +745,8 @@ export default function App() {
           return { ...l, nodePositions: next };
         }));
       }
+
+      /* epicenter dragging */
       if (epicenterDragging.current) {
         const { latticeId, startMouseX, startMouseY, startEpicenter } = epicenterDragging.current;
         const dx = (e.clientX - startMouseX) / cameraRef.current.scale;
@@ -817,53 +755,46 @@ export default function App() {
           l.id !== latticeId ? l : { ...l, epicenter: { x: startEpicenter.x + dx, y: startEpicenter.y + dy } }
         ));
       }
+
+      /* left splitter */
       if (leftSplitDragging.current) {
-        const delta = e.clientX - leftSplitStart.current; leftSplitStart.current = e.clientX;
+        const delta = e.clientX - leftSplitStart.current;
+        leftSplitStart.current = e.clientX;
         setLeftW(w => Math.max(180, Math.min(500, w + delta)));
       }
+
+      /* right splitter */
       if (rightSplitDragging.current) {
-        const delta = e.clientX - rightSplitStart.current; rightSplitStart.current = e.clientX;
+        const delta = e.clientX - rightSplitStart.current;
+        rightSplitStart.current = e.clientX;
         setRightW(w => Math.max(200, Math.min(520, w - delta)));
+      }
+
+      /* strand preview line */
+      if (strandDrag.current) {
+        const rect = panelRef.current?.getBoundingClientRect();
+        if (rect) {
+          const mx = (e.clientX - rect.left - cameraRef.current.tx) / cameraRef.current.scale;
+          const my = (e.clientY - rect.top - cameraRef.current.ty) / cameraRef.current.scale;
+          setTempStrand(prev => prev ? { ...prev, x: mx, y: my } : null);
+        }
       }
     };
 
     const onUp = (e) => {
-      // ---- commit a strand if we were drawing one ----
-      if (strandDragging.current && activeMorphismIdRef.current !== null) {
-        const { fromLatticeId, fromNodeId } = strandDragging.current;
-        // Walk up to find a node element under mouse
-        let el = e.target;
-        while (el && el !== document.body) {
-          if (el.getAttribute && el.getAttribute("data-node") === "true") break;
-          el = el.parentElement;
-        }
-        if (el && el.getAttribute("data-node") === "true") {
-          const toLatticeId = parseInt(el.getAttribute("data-lattice-id"));
-          const toNodeId = parseInt(el.getAttribute("data-node-id"));
-          if (!isNaN(toLatticeId) && !isNaN(toNodeId) &&
-              !(toLatticeId === fromLatticeId && toNodeId === fromNodeId)) {
-            const sid = Date.now() + Math.random();
-            setMorphisms(prev => prev.map(m =>
-              m.id !== activeMorphismIdRef.current ? m : {
-                ...m,
-                strands: [...m.strands, { id: sid, fromLatticeId, fromNodeId, toLatticeId, toNodeId }]
-              }
-            ));
-          }
-        }
-        strandDragging.current = null;
-        setStrandPreview(null);
-      }
-
+      /* clean‑up after panning */
       if (isPanning.current && !didDrag.current) setSelectedIds(new Set());
       if (isPanning.current) {
         isPanning.current = false;
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       }
+
       nodeDragging.current = null;
       epicenterDragging.current = null;
       mouseDownPos.current = null;
+
+      /* splitters */
       if (leftSplitDragging.current) {
         leftSplitDragging.current = false;
         document.body.style.cursor = "";
@@ -874,6 +805,34 @@ export default function App() {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       }
+
+      /* finalize a custom strand */
+      if (strandDrag.current) {
+        const targetElem = document.elementFromPoint(e.clientX, e.clientY);
+        const targetKey = targetElem?.closest('[data-key]')?.getAttribute('data-key');
+        if (targetKey && targetKey !== strandDrag.current.sourceKey && activeMorphId !== null) {
+          // add strand to active morphism
+          setMorphisms(prev =>
+            prev.map(m => (
+              m.id !== activeMorphId
+                ? m
+                : {
+                    ...m,
+                    strands: [
+                      ...m.strands,
+                      {
+                        id: Date.now() + Math.random(),
+                        source: strandDrag.current.sourceKey,
+                        target: targetKey,
+                      },
+                    ],
+                  }
+            ))
+          );
+        }
+        strandDrag.current = null;
+        setTempStrand(null);
+      }
     };
 
     window.addEventListener("mousemove", onMove);
@@ -882,7 +841,7 @@ export default function App() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, []);
+  }, [activeMorphId]);
 
   // ── Zoom ──────────────────────────────────────────────────────────
   const onWheel = useCallback((e) => {
@@ -897,8 +856,7 @@ export default function App() {
     });
   }, []);
   useEffect(() => {
-    const el = panelRef.current;
-    if (!el) return;
+    const el = panelRef.current; if (!el) return;
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [onWheel]);
@@ -913,16 +871,20 @@ export default function App() {
     else { rightWBeforeCollapse.current = rightW; setRightW(0); setRightCollapsed(true); }
   };
 
-  // ── Left splitter splits
   const onLeftSplit12 = useCallback((delta) => setLeftPane1H(h => Math.max(80, h + delta)), []);
   const onLeftSplit23 = useCallback((delta) => setLeftPane2H(h => Math.max(80, h + delta)), []);
-  const onLeftSplit34 = useCallback((delta) => setLeftPane3H(h => Math.max(80, h + delta)), []);
+  const onRightSplit12 = useCallback((delta) => setRightPane1H(h => Math.max(100, h + delta)), []);
 
   // ── Toggle node selection ─────────────────────────────────────────
   const toggleNodeSelect = useCallback((latticeId, nodeId) => {
     const key = `${latticeId}:${nodeId}`;
     setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
   }, []);
+
+  // ── Clear normal selection when entering morphism mode ───────────────
+  useEffect(() => {
+    if (activeMorphId !== null) setSelectedIds(new Set());
+  }, [activeMorphId]);
 
   // ── Derived per‑lattice data ──────────────────────────────────────
   const latticeViews = lattices.map((entry, idx) => {
@@ -931,7 +893,7 @@ export default function App() {
     const fullNode = nodes[nodes.length - 1] ?? null;
     const accent = LATTICE_ACCENTS[idx % LATTICE_ACCENTS.length];
 
-    // Edge + adjacent highlight
+    // Edge + adjacent highlight for this lattice
     const hlEdgeSet = new Set();
     const adjacentNodes = new Set();
     entry.base.edges.forEach(([a, b], i) => {
@@ -946,10 +908,11 @@ export default function App() {
     const coprimes = findCoprimes(entry.x);
     const zParts = zStructureParts(entry.x);
     const expVal = groupExponent(coprimes, entry.x);
+
     return { entry, nodes, colorMap, fullNode, accent, hlEdgeSet, adjacentNodes, coprimes, zParts, expVal };
   });
 
-  // Fast lookup of any node by its “latticeId:nodeId” key (for strands)
+  // ── Fast lookup of any node by its “latticeId:nodeId” key ───────────────
   const nodeLookup = {};
   latticeViews.forEach(v => {
     v.nodes.forEach(n => {
@@ -957,21 +920,21 @@ export default function App() {
     });
   });
 
-  // All selected nodes across all lattices (for right‑hand pane)
-  const allSelectedNodes = latticeViews.flatMap(({ entry, nodes, colorMap, fullNode }) =>
+  // ── All selected nodes (right‑hand pane) ───────────────────────────────
+  const allSelectedNodes = latticeViews.flatMap(({ entry, nodes }) =>
     [...selectedIds]
       .filter(k => k.startsWith(`${entry.id}:`))
       .map(k => {
         const nodeId = parseInt(k.split(":")[1]);
         const node = nodes.find(n => n.id === nodeId);
         if (!node) return null;
-        const indexVal = (fullNode && fullNode.order % node.order === 0) ? fullNode.order / node.order : "—";
-        return { node, colorMap, latticeId: entry.id, latticeX: entry.x, indexVal };
+        const indexVal = (entry.base.nodes[entry.base.nodes.length - 1]?.size % node.order === 0)
+          ? entry.base.nodes[entry.base.nodes.length - 1].size / node.order
+          : "—";
+        return { node, colorMap: buildOrderColorMap(nodes), latticeId: entry.id, latticeX: entry.x, indexVal };
       })
       .filter(Boolean)
   );
-
-  const primarySel = allSelectedNodes[allSelectedNodes.length - 1] ?? null;
 
   const actualLeftW = leftCollapsed ? 0 : leftW;
   const actualRightW = rightCollapsed ? 0 : rightW;
@@ -1062,39 +1025,75 @@ export default function App() {
 
           <HPSplitter onDrag={onLeftSplit12} />
 
-          {/* Pane 2: Subgroups (renamed from Morphisms) */}
-          <Pane title="Subgroups" height={leftPane2H}>
-            {primarySel ? (() => {
-              const { node, colorMap, latticeX, indexVal } = primarySel;
-              const lv = latticeViews.find(lv => lv.entry.id === primarySel.latticeId);
-              if (!lv) return null;
-              return (
-                <>
-                  <div style={{ fontSize: 10, color: C.inkMid, marginBottom: 8 }}>
-                    Subgroups of <strong style={{ fontFamily: "'Courier New', monospace" }}>{node.label}</strong>
-                    <span style={{ color: C.inkFaint, fontSize: 9 }}> in U({latticeX})</span>
+          {/* Pane 2: Morphisms – new custom‑morphism UI */}
+          <Pane title="Morphisms" height={leftPane2H}>
+            {/* Toolbar */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <button onClick={addMorphism} style={{
+                background: C.panelSurface, border: `1px solid ${C.border}`, borderRadius: 3,
+                color: C.inkMid, fontSize: 10, padding: "3px 7px", cursor: "pointer",
+                fontFamily: "'Courier New', monospace"
+              }}>+ New Morphism</button>
+              {activeMorphId !== null && (
+                <button onClick={() => setActiveMorphId(null)} style={{
+                  background: C.panelSurface, border: `1px solid ${C.border}`, borderRadius: 3,
+                  color: C.inkMid, fontSize: 10, padding: "3px 7px", cursor: "pointer",
+                  fontFamily: "'Courier New', monospace"
+                }}>Deselect</button>
+              )}
+            </div>
+
+            {morphisms.length === 0 ? (
+              <div style={{ fontSize: 10, color: C.inkFaint }}>No morphisms. Click “+ New Morphism” to start.</div>
+            ) : (
+              morphisms.map(m => (
+                <div key={m.id} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="radio" name="activeMorph" checked={activeMorphId === m.id}
+                      onChange={() => setActiveMorphId(m.id)} />
+                    <span style={{ fontSize: 10, color: C.ink, fontWeight: "600" }}>{m.name}</span>
+                    <div style={{
+                      width: 12, height: 12, borderRadius: "50%", background: m.color,
+                      border: `1px solid ${C.border}`,
+                    }} />
+                    <button onClick={() => removeMorphism(m.id)} style={{
+                      background: "none", border: "none", cursor: "pointer", color: C.inkFaint,
+                      fontSize: 12,
+                    }} title="Delete this morphism">✕</button>
                   </div>
-                  {lv.nodes.filter(n => {
-                    const sElems = new Set(node.elements);
-                    return n.id !== node.id && n.elements.every(e => sElems.has(e));
-                  }).sort((a, b) => a.order - b.order).map(n => {
-                    const col = orderColor(n.order, colorMap);
-                    const key = `${lv.entry.id}:${n.id}`;
-                    return (
-                      <div key={n.id}
-                        onClick={() => setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; })}
-                        style={{ background: selectedIds.has(key) ? C.selectedBg : C.panelSurface, border: `1px solid ${selectedIds.has(key) ? C.selectedBord : C.border}`, borderRadius: 4, padding: "4px 8px", marginBottom: 3, cursor: "pointer", fontSize: 10, color: C.ink }}>
-                        <span style={{ color: col, fontWeight: 700 }}>|{n.order}|</span>{" "}
-                        <span style={{ fontFamily: "monospace" }}>{n.label}</span>
-                      </div>
-                    );
-                  })}
-                  <div style={{ marginTop: 8, fontSize: 10, color: C.inkFaint }}>Index [G:H] = {indexVal}</div>
-                  {node.isCyclic && <div style={{ marginTop: 4, fontSize: 10, color: C.inkMid }}>Cyclic ≅ ℤ{node.order}</div>}
-                </>
-              );
-            })() : (
-              <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>Select a node to see subgroup relationships.</div>
+
+                  {/* List of strands belonging to this morphism */}
+                  <div style={{ marginLeft: 20, marginTop: 4 }}>
+                    {m.strands.length === 0 ? (
+                      <div style={{ fontSize: 9, color: C.inkFaint, paddingLeft: 4 }}>No strands.</div>
+                    ) : (
+                      m.strands.map(st => {
+                        const srcNode = nodeLookup[st.source];
+                        const tgtNode = nodeLookup[st.target];
+                        return (
+                          <div key={st.id}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 6,
+                              padding: "2px 4px", borderBottom: `1px solid ${C.border}`,
+                            }}>
+                            <svg width={13} height={13}>
+                              <line x1={2} y1={6} x2={11} y2={6}
+                                stroke={m.color} strokeWidth={2} />
+                            </svg>
+                            <span style={{ fontSize: 9, fontFamily: "'Courier New', monospace", color: C.ink }}>
+                              {srcNode?.shortLabel || "—"} → {tgtNode?.shortLabel || "—"}
+                            </span>
+                            <button onClick={() => deleteStrand(m.id, st.id)} style={{
+                              background: "none", border: "none", cursor: "pointer",
+                              color: C.inkFaint, fontSize: 12,
+                            }} title="Delete this strand">✕</button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ))
             )}
           </Pane>
 
@@ -1138,7 +1137,11 @@ export default function App() {
                         return (
                           <SubgroupRow key={node.id} node={node} colorMap={colorMap}
                             isSelected={selectedIds.has(key)}
-                            onToggle={() => setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; })} />
+                            onToggle={() => setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              next.has(key) ? next.delete(key) : next.add(key);
+                              return next;
+                            })} />
                         );
                       })}
                     </div>
@@ -1175,7 +1178,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Main SVG – lattice nodes + regular edges */}
         <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
           <defs>
             <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
@@ -1183,14 +1185,14 @@ export default function App() {
             </marker>
             {latticeViews.flatMap(({ colorMap }) =>
               Object.entries(colorMap).map(([ord, col]) => (
-                <marker key={`arr-${ord}`} id={`arr-${ord}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <marker key={`arr-${ord}-${col}`} id={`arr-${ord}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
                   <path d="M0,0 L0,6 L6,3 Z" fill={col} />
                 </marker>
               ))
             )}
-            {/* marker for each morphism – used by the straight‑line version (kept for compatibility) */}
+            {/* one marker per morphism for strand arrows */}
             {morphisms.map(m => (
-              <marker key={m.id} id={`arr-${m.id}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+              <marker key={`arr-${m.id}`} id={`arr-${m.id}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
                 <path d="M0,0 L0,6 L6,3 Z" fill={m.color} />
               </marker>
             ))}
@@ -1199,7 +1201,7 @@ export default function App() {
           <g transform={`translate(${camera.tx}, ${camera.ty}) scale(${camera.scale})`}>
             {latticeViews.map(({ entry, nodes, colorMap, accent, hlEdgeSet, adjacentNodes }) => (
               <g key={entry.id}>
-                {/* regular edges */}
+                {/* Regular edges */}
                 {entry.showEdges && entry.base.edges.map(([a, b], i) => {
                   const na = nodes[a], nb = nodes[b];
                   const hl = hlEdgeSet.has(i);
@@ -1221,26 +1223,47 @@ export default function App() {
                   );
                 })}
 
-                {/* occluders */}
+                {/* Custom morphism strands – drawn under nodes */}
+                {morphisms.flatMap(m =>
+                m.strands.map(st => {
+                    const src = nodeLookup[st.source];
+                    const tgt = nodeLookup[st.target];
+                    if (!src || !tgt) return null;               // safety‑check
+                    return (
+                    <g key={st.id}>
+                        <line
+                        x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
+                        stroke={m.color} strokeWidth={2}
+                        markerEnd={`url(#arr-${m.id})`}
+                        />
+                    </g>
+                    );
+                })
+                )}
+
+                {/* Occluders */}
                 {nodes.map(node => <ShapeOccluder key={`occ-${node.id}`} node={node} R={26} />)}
 
-                {/* nodes */}
+                {/* Nodes */}
                 {nodes.map(node => {
                   const key = `${entry.id}:${node.id}`;
                   return (
-                    <ShapeNode key={node.id}
+                    <ShapeNode
+                      key={node.id}
                       node={node}
-                      latticeId={entry.id}
                       colorMap={colorMap}
                       isSelected={selectedIds.has(key)}
                       isAdjacent={adjacentNodes.has(node.id) && !selectedIds.has(key)}
-                      isDrawMode={activeMorphismId !== null}
                       onToggleSelect={nodeId => toggleNodeSelect(entry.id, nodeId)}
-                      onMouseDown={(nodeId, e) => onNodeMouseDown(entry.id, nodeId, e)} />
+                      onMouseDown={(nodeId, e) => onNodeMouseDown(entry.id, nodeId, e)}
+                      onStartStrand={activeMorphId ? (nodeId, e) => startStrandDrag(entry.id, nodeId, e) : undefined}
+                      allowSelect={activeMorphId === null}
+                      nodeKey={key}
+                    />
                   );
                 })}
 
-                {/* epicenter */}
+                {/* Epicenter */}
                 {entry.showEpicenter && (
                   <Epicenter
                     x={entry.epicenter.x} y={entry.epicenter.y}
@@ -1250,62 +1273,6 @@ export default function App() {
               </g>
             ))}
           </g>
-        </svg>
-
-        {/* ── STRAND OVERLAY (curved paths, screen‑space) ── */}
-        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}>
-          <defs>
-            {morphisms.map(m => (
-              <marker key={m.id} id={`sarr-${m.id}`} markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
-                <path d="M0,0 L0,7 L8,3.5 Z" fill={m.color} />
-              </marker>
-            ))}
-            <marker id="sarr-preview" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
-              <path d="M0,0 L0,7 L8,3.5 Z" fill={C.inkFaint} />
-            </marker>
-          </defs>
-
-          {/* committed strands */}
-          {morphisms.flatMap(m =>
-            m.strands.map(s => {
-              const srcLV = latticeViews.find(lv => lv.entry.id === s.fromLatticeId);
-              const tgtLV = latticeViews.find(lv => lv.entry.id === s.toLatticeId);
-              if (!srcLV || !tgtLV) return null;
-              const srcNode = srcLV.nodes.find(n => n.id === s.fromNodeId);
-              const tgtNode = tgtLV.nodes.find(n => n.id === s.toNodeId);
-              if (!srcNode || !tgtNode) return null;
-              const cam = camera;
-              const x1 = srcNode.x * cam.scale + cam.tx, y1 = srcNode.y * cam.scale + cam.ty;
-              const x2 = tgtNode.x * cam.scale + cam.tx, y2 = tgtNode.y * cam.scale + cam.ty;
-              const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-              const dx = x2 - x1, dy = y2 - y1;
-              const len = Math.sqrt(dx * dx + dy * dy) || 1;
-              const arc = Math.min(90, len * 0.38);
-              const cpx = mx - (dy / len) * arc, cpy = my + (dx / len) * arc;
-              return (
-                <path key={s.id}
-                  d={`M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`}
-                  stroke={m.color} strokeWidth={2.2} fill="none" opacity={0.88}
-                  markerEnd={`url(#sarr-${m.id})`} />
-              );
-            })
-          )}
-
-          {/* live preview while dragging */}
-          {strandPreview && (() => {
-            const { x1, y1, x2, y2 } = strandPreview;
-            const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-            const dx = x2 - x1, dy = y2 - y1;
-            const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            const arc = Math.min(70, len * 0.32);
-            const cpx = mx - (dy / len) * arc, cpy = my + (dx / len) * arc;
-            return (
-              <path d={`M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`}
-                stroke={C.inkFaint} strokeWidth={1.6} fill="none"
-                strokeDasharray="7 4" opacity={0.65}
-                markerEnd="url(#sarr-preview)" />
-            );
-          })()}
         </svg>
 
         {/* Zoom reset */}
@@ -1341,7 +1308,7 @@ export default function App() {
         <CollapseBtn collapsed={rightCollapsed} onToggle={toggleRight} side="right" />
 
         {actualRightW > 40 && <>
-          {/* Pane 1: Group Info */}
+          {/* Pane 1: Group Info — one Section per lattice */}
           <Pane title="Group Info" height={rightPane1H}>
             {latticeViews.length === 0
               ? <div style={{ color: C.inkFaint, fontSize: 11 }}>No lattices added.</div>
@@ -1369,7 +1336,7 @@ export default function App() {
                         ].map(([k, v]) => <SectionRow key={k} label={k} value={String(v)} accent={k === "Abelian" ? "#4ade80" : undefined} />)}
                       </Section>
 
-                      {/* Display toggles */}
+                      {/* Display controls */}
                       <Section label="Display" depth={1} defaultOpen={false}>
                         <SectionToggle label="Show Edges"
                           checked={entry.showEdges}
@@ -1394,13 +1361,13 @@ export default function App() {
 
           <HPSplitter onDrag={onRightSplit12} />
 
-          {/* Pane 2: Selected nodes */}
-          <Pane title={`Selected${allSelectedNodes.length > 1 ? ` (${allSelectedNodes.length})` : ""}`} height={rightPane2H}>
+          {/* Pane 2: Selected nodes — fills rest */}
+          <Pane title={`Selected${allSelectedNodes.length > 1 ? ` (${allSelectedNodes.length})` : ""}`} style={{ flex: 1 }}>
             {allSelectedNodes.length > 0
               ? <div style={{ margin: "-12px -14px" }}>
                   {allSelectedNodes.map(({ node, colorMap, latticeId, latticeX, indexVal }) => {
                     const col = orderColor(node.order, colorMap);
-                    const cyclicLabel = node.order === 1 ? "Trivial" : node.isCyclic ? "Cyclic" : node.shape === "square" ? "Non‑cyclic · pair gens" : "Non‑cyclic · triple gens";
+                    const cyclicLabel = node.order === 1 ? "Trivial" : node.isCyclic ? "Cyclic" : node.shape === "square" ? "Non-cyclic · pair gens" : "Non-cyclic · triple gens";
                     return (
                       <Section key={`${latticeId}:${node.id}`} label={node.shortLabel} badge={`ord ${node.order}`} accent={col} depth={0} defaultOpen={false}>
                         <Section label="Label & Style" depth={1} defaultOpen={false}>
@@ -1444,127 +1411,6 @@ export default function App() {
                   })}
                 </div>
               : <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>Click nodes to select them.</div>
-            }
-          </Pane>
-
-          <HPSplitter onDrag={onRightSplit23} />
-
-          {/* Pane 3: Morphisms */}
-          <Pane title="Morphisms" style={{ flex: 1 }}>
-            <div style={{ marginBottom: 10 }}>
-              <button onClick={() => {
-                const id = Date.now();
-                const color = MORPHISM_COLORS[morphisms.length % MORPHISM_COLORS.length];
-                setMorphisms(prev => [...prev, { id, name: `φ${morphisms.length + 1}`, color, strands: [] }]);
-                setActiveMorphismId(id);
-              }} style={{
-                width: "100%", background: C.ink, border: "none", borderRadius: 4,
-                color: C.panelBg, fontSize: 10, letterSpacing: 3, textTransform: "uppercase",
-                padding: "7px 0", cursor: "pointer", fontFamily: "'Courier New', monospace",
-              }}>+ New Morphism</button>
-            </div>
-
-            {morphisms.length === 0
-              ? <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>No morphisms yet. Create one to start drawing connections.</div>
-              : <div style={{ margin: "-12px -14px" }}>
-                  {morphisms.map(m => {
-                    const isActive = activeMorphismId === m.id;
-                    const analysis = analyzeMorphism(m.strands, lattices, latticeViews);
-                    return (
-                      <Section key={m.id} label={m.name} depth={0} accent={m.color}
-                        badge={m.strands.length ? `${m.strands.length} strand${m.strands.length > 1 ? "s" : ""}` : undefined}
-                        defaultOpen={isActive}>
-
-                        {/* activation toggle */}
-                        <SectionBody>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flex: 1 }}>
-                              <div onClick={() => setActiveMorphismId(isActive ? null : m.id)}
-                                style={{
-                                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                                  border: `2px solid ${m.color}`,
-                                  background: isActive ? m.color : "transparent",
-                                  cursor: "pointer", transition: "background 0.15s",
-                                }} />
-                              <span style={{ fontSize: 10, color: isActive ? C.ink : C.inkFaint, letterSpacing: 1 }}>
-                                {isActive ? "Drawing strands ↗" : "Activate to draw"}
-                              </span>
-                            </label>
-                            <button onClick={() => {
-                              setMorphisms(prev => prev.filter(x => x.id !== m.id));
-                              if (activeMorphismId === m.id) setActiveMorphismId(null);
-                            }} style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: 13, padding: "0 2px", lineHeight: 1 }} title="Delete morphism">×</button>
-                          </div>
-                          {isActive && (
-                            <div style={{ marginTop: 6, fontSize: 9, color: m.color, letterSpacing: 1.5, textTransform: "uppercase" }}>
-                              ↗ drag from any node to another
-                            </div>
-                          )}
-                        </SectionBody>
-
-                        {/* strand list */}
-                        {m.strands.length > 0 && (
-                          <Section label="Strands" depth={1} defaultOpen={true} badge={m.strands.length}>
-                            {analysis.strandLabels.map((sl, i) => (
-                              <div key={m.strands[i].id} style={{ padding: "5px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 6 }}>
-                                <div style={{ width: 7, height: 7, borderRadius: "50%", background: m.color, flexShrink: 0 }} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 10, color: C.ink, fontFamily: "'Courier New', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {sl.from}
-                                  </div>
-                                  <div style={{ fontSize: 9, color: C.inkFaint, marginTop: 1 }}>↓ {sl.to}</div>
-                                </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                                  <span style={{ fontSize: 9, color: C.inkFaint }}>{sl.fromOrder}→{sl.toOrder}</span>
-                                  <button onClick={() => setMorphisms(prev => prev.map(mx =>
-                                    mx.id !== m.id ? mx : { ...mx, strands: mx.strands.filter(s => s.id !== m.strands[i].id) }
-                                  ))} style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: 12, padding: "0 2px", lineHeight: 1 }}>×</button>
-                                </div>
-                              </div>
-                            ))}
-                          </Section>
-                        )}
-
-                        {/* analysis panel */}
-                        {m.strands.length > 0 && (
-                          <Section label="Analysis" depth={1} defaultOpen={false}>
-                            <SectionRow label="Homo?" value={
-                              analysis.isHomo === null ? "n/a" : analysis.isHomo ? "yes ✓" : "no ✗"
-                            } accent={analysis.isHomo === true ? "#4ade80" : analysis.isHomo === false ? "#f87171" : undefined} />
-                            <SectionRow label="Injective" value={
-                              analysis.isInjective === null ? "n/a" : analysis.isInjective ? "yes ✓" : "no ✗"
-                            } accent={analysis.isInjective === true ? "#4ade80" : analysis.isInjective === false ? "#f87171" : undefined} />
-                            <SectionRow label="Surjective" value={
-                              analysis.isSurjective === null ? "n/a" : analysis.isSurjective ? "yes ✓" : "no ✗"
-                            } accent={analysis.isSurjective === true ? "#4ade80" : analysis.isSurjective === false ? "#f87171" : undefined} />
-                            {analysis.kernel.length > 0 && (
-                              <Section label="Kernel" depth={2} defaultOpen={false} badge={analysis.kernel.length}>
-                                <SectionBody>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                                    {analysis.kernel.map(el => (
-                                      <span key={el} style={{ fontSize: 10, color: C.inkMid, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "1px 5px", border: `1px solid ${C.border}` }}>{el}</span>
-                                    ))}
-                                  </div>
-                                </SectionBody>
-                              </Section>
-                            )}
-                            {analysis.image.length > 0 && (
-                              <Section label="Image" depth={2} defaultOpen={false} badge={analysis.image.length}>
-                                <SectionBody>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                                    {analysis.image.map(el => (
-                                      <span key={el} style={{ fontSize: 10, color: m.color, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "1px 5px", border: `1px solid ${C.border}` }}>{el}</span>
-                                    ))}
-                                  </div>
-                                </SectionBody>
-                              </Section>
-                            )}
-                          </Section>
-                        )}
-                      </Section>
-                    );
-                  })}
-                </div>
             }
           </Pane>
         </>}

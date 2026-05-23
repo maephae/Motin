@@ -1354,6 +1354,13 @@ export default function App() {
   const activeMorphismIdRef = useRef(null);
   useEffect(() => { activeMorphismIdRef.current = activeMorphismId; }, [activeMorphismId]);
 
+  // ── Save/Load State ──
+  const [notification, setNotification] = useState(null);
+  const [saveName, setSaveName] = useState("");
+  const [savedWorkspaces, setSavedWorkspaces] = useState([]);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const dragCounter = useRef(0);
+
   const [leftW, setLeftW] = useState(270);
   const [rightW, setRightW] = useState(310);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -1455,6 +1462,19 @@ export default function App() {
     const base = view.build(18);
     const entry = makeLatticeEntry(base, cw, ch, "U(18)");
     setLattices([entry]);
+  }, []);
+
+  // ── Load saved workspaces from localStorage ──────────────────────
+  useEffect(() => {
+    const saved = localStorage.getItem("lattice_workspaces");
+    if (saved) {
+      try {
+        const workspaces = JSON.parse(saved);
+        setSavedWorkspaces(workspaces);
+      } catch (e) {
+        console.error("Failed to load saved workspaces", e);
+      }
+    }
   }, []);
 
   // ── Helpers ───────────────────────────────────────────────────────
@@ -1772,6 +1792,49 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+    // ── Drag and Drop File Import ─────────────────────────────────────
+  useEffect(() => {
+    const handleDragEnter = (e) => { e.preventDefault(); e.stopPropagation(); dragCounter.current++; if (e.dataTransfer.items && e.dataTransfer.items.length > 0) setIsDraggingFile(true); };
+    const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; };
+    const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); dragCounter.current--; if (dragCounter.current === 0) setIsDraggingFile(false); };
+    const handleDrop = async (e) => {
+      e.preventDefault(); e.stopPropagation(); setIsDraggingFile(false); dragCounter.current = 0;
+      const files = e.dataTransfer.files;
+      if (files.length === 0) return;
+      const file = files[0];
+      if (file.name.endsWith('.json')) {
+        const rect = panelRef.current?.getBoundingClientRect();
+        const cam = cameraRef.current;
+        const worldX = (e.clientX - (rect?.left ?? 0) - cam.tx) / cam.scale;
+        const worldY = (e.clientY - (rect?.top ?? 0) - cam.ty) / cam.scale;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = JSON.parse(e.target.result);
+            if (data.lattices && data.morphisms !== undefined) {
+              importCompleteWorkspace(file, { x: worldX, y: worldY });
+            } else if (data.table && Array.isArray(data.table)) {
+              const group = LATTICE_GROUPS.find(g => g.key === "Raw");
+              const base = group.views[0].build(null, data);
+              const label = data.labels ? `Raw(${data.labels[0]}...)` : "Raw Table";
+              const r = panelRef.current?.getBoundingClientRect();
+              const cw = r?.width ?? 800, ch = r?.height ?? 600;
+              const entry = makeLatticeEntry(base, cw, ch, label);
+              entry.epicenter = { x: worldX, y: worldY };
+              setLattices(prev => [...prev, entry]);
+              setNotification({ message: `📐 Placed custom Cayley table`, type: "success" });
+              setTimeout(() => setNotification(null), 3000);
+            } else throw new Error("Invalid format");
+          } catch (err) { setNotification({ message: `❌ Import failed: ${err.message}`, type: "error" }); setTimeout(() => setNotification(null), 4000); }
+        };
+        reader.readAsText(file);
+      }
+    };
+    window.addEventListener('dragenter', handleDragEnter); window.addEventListener('dragover', handleDragOver); window.addEventListener('dragleave', handleDragLeave); window.addEventListener('drop', handleDrop);
+    return () => { window.removeEventListener('dragenter', handleDragEnter); window.removeEventListener('dragover', handleDragOver); window.removeEventListener('dragleave', handleDragLeave); window.removeEventListener('drop', handleDrop); };
+  }, [importCompleteWorkspace]);
+
   const toggleLeft = () => {
     if (leftCollapsed) { setLeftW(leftWBeforeCollapse.current); setLeftCollapsed(false); }
     else { leftWBeforeCollapse.current = leftW; setLeftW(0); setLeftCollapsed(true); }
@@ -1813,6 +1876,85 @@ export default function App() {
   const toggleNodeSelect = useCallback((latticeId, nodeId) => {
     const key = `${latticeId}:${nodeId}`;
     setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
+  }, []);
+
+  // ── Save/Load Functions ───────────────────────────────────────────
+
+  const exportCompleteWorkspace = useCallback(async () => {
+    const workspaceName = prompt("Name your workspace:", "My Group Theory Workspace");
+    if (!workspaceName) return;
+    const workspaceDescription = prompt("Description (optional):", "");
+    
+    const workspace = {
+      version: "1.0.0",
+      metadata: { name: workspaceName, description: workspaceDescription || "", created: new Date().toISOString(), modified: new Date().toISOString(), appVersion: "1.0.0" },
+      lattices: lattices.map(l => ({
+        id: l.id, label: l.label, type: l.kind, param: l.param,
+        position: { epicenter: l.epicenter, nodePositions: l.nodePositions },
+        display: { showEdges: l.showEdges, showArrows: l.showArrows, showEpicenter: l.showEpicenter },
+        cachedData: { table: l.base.table, labels: l.base.labels, nodes: l.base.nodes, edges: l.base.edges, dimensions: { W: l.base.W, H: l.base.H }, maxLevel: l.base.maxLevel, byLevel: l.base.byLevel, nodeR: l.base.nodeR, kind: l.base.kind, viewType: l.base.viewType }
+      })),
+      morphisms: morphisms.map(m => ({ id: m.id, name: m.name, color: m.color, strands: m.strands.map(s => ({ id: s.id, fromLatticeId: s.fromLatticeId, fromNodeId: s.fromNodeId, toLatticeId: s.toLatticeId, toNodeId: s.toNodeId })) })),
+      morphismGroups: morphismGroups,
+      drawings: drawStrokes.filter(s => s.permanent).map(s => ({ id: s.id, tool: s.tool, color: s.color, size: s.size, permanent: true, lineStyle: s.lineStyle, data: s.tool === "pen" ? { points: s.points } : { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 } })),
+      notes: notes.map(n => ({ id: n.id, x: n.x, y: n.y, text: n.text, w: n.w, h: n.h, color: n.color || "#fff9c4" })),
+      nodeStyles: nodeCustomStyles,
+      camera: camera,
+      settings: { grid: gridSettings },
+      selection: { selectedNodeIds: Array.from(selectedIds), activeMorphismId: activeMorphismId }
+    };
+    
+    const jsonStr = JSON.stringify(workspace, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeFileName = workspaceName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    link.download = `${safeFileName}_lattice.json`;
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotification({ message: `✅ Saved "${workspaceName}" successfully!`, type: "success" });
+    setTimeout(() => setNotification(null), 3000);
+  }, [lattices, morphisms, morphismGroups, drawStrokes, notes, nodeCustomStyles, camera, gridSettings, selectedIds, activeMorphismId]);
+
+  const importCompleteWorkspace = useCallback(async (file, dropPosition = null) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const workspace = JSON.parse(e.target.result);
+        if (!workspace.version || !workspace.lattices) throw new Error("Invalid workspace file format");
+        
+        const restoredLattices = workspace.lattices.map(latticeData => {
+          const base = { kind: latticeData.type, param: latticeData.param, nodes: latticeData.cachedData.nodes, edges: latticeData.cachedData.edges, W: latticeData.cachedData.dimensions.W, H: latticeData.cachedData.dimensions.H, maxLevel: latticeData.cachedData.maxLevel, byLevel: latticeData.cachedData.byLevel, nodeR: latticeData.cachedData.nodeR, table: latticeData.cachedData.table, labels: latticeData.cachedData.labels, viewType: latticeData.cachedData.viewType };
+          let epicenter = latticeData.position.epicenter;
+          if (dropPosition) epicenter = { x: dropPosition.x, y: dropPosition.y };
+          return { id: latticeData.id, label: latticeData.label, kind: latticeData.type, param: latticeData.param, base: base, epicenter: epicenter, nodePositions: latticeData.position.nodePositions || {}, showEdges: latticeData.display.showEdges, showArrows: latticeData.display.showArrows, showEpicenter: latticeData.display.showEpicenter };
+        });
+        
+        const idMap = new Map();
+        const restoredMorphisms = workspace.morphisms.map(m => { const newId = Date.now() + Math.random() * 1000; idMap.set(m.id, newId); return { ...m, id: newId, strands: m.strands.map(s => ({ ...s, id: Date.now() + Math.random() * 1000 })) }; });
+        const restoredGroups = workspace.morphismGroups.map(g => ({ ...g, id: Date.now() + Math.random() * 1000, morphismIds: g.morphismIds.map(oldId => idMap.get(oldId)).filter(Boolean) }));
+        const restoredDrawings = workspace.drawings.map(d => ({ ...d, id: Date.now() + Math.random() * 1000, permanent: true, points: d.data?.points, x1: d.data?.x1, y1: d.data?.y1, x2: d.data?.x2, y2: d.data?.y2 }));
+        const restoredNotes = workspace.notes.map(n => ({ ...n, id: Date.now() + Math.random() * 1000 }));
+        
+        setLattices(restoredLattices);
+        setMorphisms(restoredMorphisms);
+        setMorphismGroups(restoredGroups);
+        setDrawStrokes(restoredDrawings);
+        setNotes(restoredNotes);
+        setNodeCustomStyles(workspace.nodeStyles || {});
+        setCamera(workspace.camera);
+        if (workspace.settings?.grid) setGridSettings(workspace.settings.grid);
+        if (workspace.selection) { setSelectedIds(new Set(workspace.selection.selectedNodeIds || [])); setActiveMorphismId(workspace.selection.activeMorphismId || null); }
+        
+        setNotification({ message: `✅ Loaded successfully!`, type: "success" });
+        setTimeout(() => setNotification(null), 3000);
+      } catch (err) {
+        setNotification({ message: `❌ Failed to load: ${err.message}`, type: "error" });
+        setTimeout(() => setNotification(null), 4000);
+      }
+    };
+    reader.readAsText(file);
   }, []);
 
   // ── Derived views ─────────────────────────────────────────────────
@@ -1875,6 +2017,10 @@ export default function App() {
         .sky-scroll::-webkit-scrollbar-thumb:hover { background: ${C.borderHover}; }
         .sky-scroll-left { direction: rtl; }
         .sky-scroll-left > * { direction: ltr; }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+          to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
       `}</style>
 
       {showRawModal && (
@@ -1889,6 +2035,33 @@ export default function App() {
             } catch (e) { setError(String(e)); setShowRawModal(false); }
           }}
         />
+      )}
+
+            {/* Drag and drop overlay */}
+      {isDraggingFile && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(29, 78, 216, 0.15)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', border: '3px dashed #3b82f6', margin: 20, borderRadius: 16 }}>
+          <div style={{ background: C.panelBg, padding: '24px 48px', borderRadius: 12, border: `2px solid #3b82f6`, boxShadow: '0 8px 32px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 12px' }}>
+              <path d="M12 3L12 17M12 17L8 13M12 17L16 13" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M5 17H3C2.44772 17 2 16.5523 2 16V5C2 4.44772 2.44772 4 3 4H21C21.5523 4 22 4.44772 22 5V16C22 16.5523 21.5523 17 21 17H19" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <div style={{ fontSize: 14, fontWeight: 'bold', color: C.ink, marginBottom: 4 }}>Drop to Import</div>
+            <div style={{ fontSize: 10, color: C.inkFaint }}>Workspace (.json) or Cayley table</div>
+          </div>
+        </div>
+      )}
+
+      {/* Notification toast */}
+      {notification && (
+        <div style={{
+          position: "fixed", bottom: 30, left: "50%", transform: "translateX(-50%)", zIndex: 1001,
+          background: notification.type === "error" ? "#ef4444" : notification.type === "success" ? "#10b981" : "#3b82f6",
+          color: "white", padding: "10px 20px", borderRadius: 8, fontSize: 11,
+          fontFamily: "'Courier New', monospace", letterSpacing: 1, boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          pointerEvents: "none", whiteSpace: "nowrap", animation: "slideUp 0.3s ease"
+        }}>
+          {notification.message}
+        </div>
       )}
 
       {/* ── Settings Modal ── */}
@@ -1950,7 +2123,36 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ borderTop: `1px solid ${C.border}` }} />
+              {/* ── save/load section ── */}
+              <div>
+                <div style={{ fontSize: 8, letterSpacing: 2.5, color: C.inkFaint, textTransform: "uppercase", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 8L2 2.5C2 2.2 2.2 2 2.5 2H9.5C9.8 2 10 2.2 10 2.5V9.5C10 9.8 9.8 10 9.5 10H2" stroke={C.inkMid} strokeWidth="1.2" strokeLinejoin="round"/>
+                    <path d="M7 2V5L5.5 4L4 5V2" stroke={C.inkMid} strokeWidth="1.2" strokeLinejoin="round"/>
+                  </svg>
+                  Complete Workspace
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                  <button onClick={exportCompleteWorkspace} style={{ padding: "8px 16px", background: C.inkMid, border: "none", borderRadius: 6, cursor: "pointer", fontSize: 10, color: C.panelBg, fontFamily: "'Courier New', monospace", display: "flex", alignItems: "center", gap: 6 }}>
+                    💾 Save All (JSON)
+                  </button>
+                  <label style={{ padding: "8px 16px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, cursor: "pointer", fontSize: 10, fontFamily: "'Courier New', monospace", display: "flex", alignItems: "center", gap: 6 }}>
+                    📂 Load Workspace
+                    <input type="file" accept=".json" onChange={e => e.target.files[0] && importCompleteWorkspace(e.target.files[0])} style={{ display: "none" }} />
+                  </label>
+                </div>
+                <div style={{ fontSize: 8, color: C.inkFaint, lineHeight: 1.5, background: C.bg, padding: "8px 10px", borderRadius: 4 }}>
+                  <strong>📦 Saves everything:</strong><br/>
+                  • All group lattices (positions, custom layouts)<br/>
+                  • All morphisms and morphism groups<br/>
+                  • All drawings and sticky notes<br/>
+                  • Node style overrides (colors, labels)<br/>
+                  • Camera view and grid settings<br/>
+                  • 💡 Tip: Drag & drop .json files anywhere to import!
+                </div>
+              </div>
+
+              <div style={{ borderTop: `1px solid ${C.border}` }} />  {/* ← This divider stays */}
 
               {/* Actions section */}
               <div>

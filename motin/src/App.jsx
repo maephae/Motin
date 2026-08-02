@@ -1776,54 +1776,65 @@ function buildFactorizationTree(n) {
 //  MERMAID EXPORT
 // ═══════════════════════════════════════════════════════════════════════
 
-function generateMermaidFile(lattices, morphisms) {
+function generateMermaidFile(lattices, morphisms, notes = []) {
   let output = [];
   
   // ── Helpers ────────────────────────────────────────────────────────
 
-  // 1. Clean label: remove subscripts, brackets, braces, underscores, etc.
-  const cleanLabel = (str) => {
-    if (!str) return 'e';
-    // Remove subscript characters (₀₁₂₃₄₅₆₇₈₉) and other common special chars
-    return String(str)
-      .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, '')           // remove subscripts
-      .replace(/[{}<>()[\],_]/g, '')           // remove brackets, braces, commas, underscores
-      .replace(/[^a-zA-Z0-9]/g, ' ')           // replace any other non‑alnum with space
+  // ✅ FIXED: Include angle brackets < and > as unsafe
+  const isUnsafe = (str) => /[[\]{}|"<>]/.test(str);
+  const escapeQuotes = (str) => str.replace(/"/g, '""');
+  
+  const getLabelForMermaid = (label) => {
+    if (!label) return 'e';
+    const trimmed = label.trim();
+    if (!trimmed) return 'e';
+    if (isUnsafe(trimmed)) {
+      return `"${escapeQuotes(trimmed)}"`;
+    }
+    return trimmed;
+  };
+
+  // Sanitize subgraph titles (remove characters that break Mermaid)
+  const sanitizeSubgraphTitle = (title) => {
+    if (!title) return 'Group';
+    return title
+      .replace(/[\[\]{}<>]/g, '')  // Remove brackets and braces
+      .replace(/"/g, "'")           // Replace quotes with apostrophes
       .trim()
-      .substring(0, 15);
+      .substring(0, 30) || 'Group';
+  };
+
+  const getSubgraphId = (label) => {
+    if (!label) return 'G';
+    return label
+      .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .substring(0, 20) || 'G';
   };
 
   const nodeId = (latticeId, nodeId) => `N${latticeId}_${nodeId}`;
 
-  // 2. Node definition with label INSIDE the shape
   const getNodeDef = (id, label, node) => {
-    const clean = cleanLabel(label) || 'n';
+    const safeLabel = getLabelForMermaid(label);
     if (node.order === 1) {
-      return `${id}((${clean}))`;          // circle for identity
+      return `${id}((${safeLabel}))`;
     } else if (node.isNormal) {
-      return `${id}[${clean}]`;            // square for normal subgroups
+      return `${id}[${safeLabel}]`;
     } else if (node.shape === 'triangle') {
-      return `${id}{{${clean}}}`;          // diamond for 3‑generator
+      return `${id}{{${safeLabel}}}`;
     } else {
-      return `${id}((${clean}))`;          // default circle
+      return `${id}((${safeLabel}))`;
     }
   };
 
-  // 3. Map order to a Mermaid class name
   const orderClass = (order) => `order${order}`;
 
-  // 4. Order colour palette (same as ORDER_COLS in your app)
   const ORDER_COLS = [
-    "#16a34a", // order 1
-    "#0284c7", // order 2
-    "#7c3aed", // order 3
-    "#db2777", // order 4
-    "#ea580c", // order 5
-    "#ca8a04", // order 6
-    "#be123c", // order 7
-    "#0891b2", // order 8
-    "#65a30d", // order 9
-    "#9333ea"  // order 10+
+    "#16a34a", "#0284c7", "#7c3aed", "#db2777", "#ea580c",
+    "#ca8a04", "#be123c", "#0891b2", "#65a30d", "#9333ea"
   ];
 
   const getOrderColor = (order) => {
@@ -1831,21 +1842,23 @@ function generateMermaidFile(lattices, morphisms) {
     return ORDER_COLS[idx];
   };
 
-  // ─── HEADER (ONLY ONCE) ────────────────────────────────────────────
+  // ─── HEADER ──────────────────────────────────────────────────────────
   output.push('%%{init: { "theme": "base", "themeVariables": { "primaryColor": "#B7D0DE", "primaryTextColor": "#0B151E", "primaryBorderColor": "#93b5c8", "lineColor": "#93b5c8", "tertiaryColor": "#F4F6F4", "fontFamily": "monospace" } } }%%');
   output.push('graph TB');
   output.push('');
 
-  const allNodes = new Map(); // key: "latticeId:nodeId" → { id, label, isNormal, order }
+  // ─── COLLECT ALL NODES FOR STYLING ────────────────────────────────
+  const allNodes = new Map();
 
-  // ─── NODES ──────────────────────────────────────────────────────────
+  // ─── GENERATE LATTICE SUBGRAPHS ────────────────────────────────────
   lattices.forEach((lattice) => {
     const base = lattice.base;
     if (!base || !base.nodes) return;
 
-    const subgraphLabel = cleanLabel(lattice.label || `G${lattice.id}`);
-    const safeSubgraphLabel = subgraphLabel || 'G';
-    output.push(`    subgraph ${safeSubgraphLabel}`);
+    const subgraphId = getSubgraphId(lattice.label || `G${lattice.id}`);
+    const subgraphLabel = sanitizeSubgraphTitle(lattice.label || `Group ${lattice.id}`);
+    
+    output.push(`    subgraph ${subgraphId}["${subgraphLabel}"]`);
 
     base.nodes.forEach((node) => {
       const id = nodeId(lattice.id, node.id);
@@ -1854,7 +1867,7 @@ function generateMermaidFile(lattices, morphisms) {
       
       allNodes.set(`${lattice.id}:${node.id}`, {
         id: id,
-        label: cleanLabel(rawLabel),
+        label: rawLabel,
         isNormal: node.isNormal,
         order: node.order
       });
@@ -1866,7 +1879,7 @@ function generateMermaidFile(lattices, morphisms) {
     output.push('');
   });
 
-  // ─── EDGES ──────────────────────────────────────────────────────────
+  // ─── GENERATE EDGES ─────────────────────────────────────────────────
   if (lattices.some(l => l.base?.edges?.length > 0)) {
     output.push('    %% Subgroup relationships');
     output.push('');
@@ -1892,52 +1905,56 @@ function generateMermaidFile(lattices, morphisms) {
     });
   });
 
-  // ─── MORPHISMS ──────────────────────────────────────────────────────
+  // ─── GENERATE MORPHISMS ────────────────────────────────────────────
   if (morphisms && morphisms.length > 0) {
     output.push('');
     output.push('    %% Morphisms');
     output.push('');
 
     morphisms.forEach((morphism) => {
-      const morphName = cleanLabel(morphism.name || 'phi');
+      const morphName = getLabelForMermaid(morphism.name || 'phi');
+      const seenPairs = new Set();
       
       morphism.strands.forEach((strand) => {
         const fromKey = `${strand.fromLatticeId}:${strand.fromNodeId}`;
         const toKey = `${strand.toLatticeId}:${strand.toNodeId}`;
+        const pairKey = `${fromKey}->${toKey}`;
+        
+        if (seenPairs.has(pairKey)) return;
+        seenPairs.add(pairKey);
+        
         const fromInfo = allNodes.get(fromKey);
         const toInfo = allNodes.get(toKey);
 
         if (fromInfo && toInfo) {
-          output.push(`    ${fromInfo.id} -. "${morphName}" .-> ${toInfo.id}`);
+          const safeLabel = getLabelForMermaid(morphName);
+          output.push(`    ${fromInfo.id} -. "${safeLabel}" .-> ${toInfo.id}`);
         }
       });
     });
   }
 
-  // ─── ORDER‑BASED STYLING ──────────────────────────────────────────
+  // ─── STYLING CLASSES ───────────────────────────────────────────────
   output.push('');
-  output.push('    %% Order-based colors');
+  output.push('    %% Node styling by order');
   
-  // Collect all distinct orders present
   const orders = new Set();
   for (const [key, info] of allNodes) {
     orders.add(info.order);
   }
   
-  // Define a class for each distinct order
   for (const order of orders) {
     const color = getOrderColor(order);
     const className = orderClass(order);
     output.push(`    classDef ${className} fill:${color},stroke:${color},color:#fff,stroke-width:1.5px;`);
   }
   
-  // Assign each node to its order class
   for (const [key, info] of allNodes) {
     const className = orderClass(info.order);
     output.push(`    class ${info.id} ${className};`);
   }
 
-  // ─── LEGACY STYLING (identity and normal, overrides if needed) ──
+  // ─── SPECIAL OVERRIDES ─────────────────────────────────────────────
   output.push('');
   output.push('    %% Special overrides');
   output.push('    classDef identity fill:#fbbf24,stroke:#ca8a04,color:#0B151E,stroke-width:2px;');
@@ -1951,6 +1968,122 @@ function generateMermaidFile(lattices, morphisms) {
     }
   }
 
+  // ─── LEGEND AND REFERENCE SECTION ──────────────────────────────────
+  output.push('');
+  output.push('    %% ============================================');
+  output.push('    %% LEGEND AND REFERENCE');
+  output.push('    %% ============================================');
+  output.push('');
+
+  // ---- Shape Key (only elements that appear) ----
+  output.push('    subgraph Key["Shape Key"]');
+  
+  let hasIdentity = false;
+  let hasNormal = false;
+  let hasTriangle = false;
+  let hasStandard = false;
+  let hasBothNormal = false;
+  let hasOneNormal = false;
+  let hasMorphism = false;
+
+  for (const [key, info] of allNodes) {
+    if (info.order === 1) hasIdentity = true;
+    if (info.isNormal) hasNormal = true;
+  }
+
+  for (const lattice of lattices) {
+    if (lattice.base?.nodes?.some(n => n.shape === 'triangle')) {
+      hasTriangle = true;
+    }
+    if (lattice.base?.nodes?.some(n => n.shape !== 'triangle' && n.order !== 1 && !n.isNormal)) {
+      hasStandard = true;
+    }
+  }
+
+  for (const lattice of lattices) {
+    if (lattice.base?.edges) {
+      for (const [from, to] of lattice.base.edges) {
+        const fromInfo = allNodes.get(`${lattice.id}:${from}`);
+        const toInfo = allNodes.get(`${lattice.id}:${to}`);
+        if (fromInfo && toInfo) {
+          if (fromInfo.isNormal && toInfo.isNormal) hasBothNormal = true;
+          else if (fromInfo.isNormal || toInfo.isNormal) hasOneNormal = true;
+        }
+      }
+    }
+  }
+
+  if (morphisms && morphisms.length > 0) hasMorphism = true;
+
+  let keyEntries = [];
+  if (hasIdentity) keyEntries.push('        L1(("e")) --> L1_label["Identity element"]');
+  if (hasNormal) keyEntries.push('        L2["Normal"] --> L2_label["Normal subgroup (square)"]');
+  if (hasTriangle) keyEntries.push('        L3{{"TriGen"}} --> L3_label["3-generator subgroup (diamond)"]');
+  if (hasStandard) keyEntries.push('        L4(("Circle")) --> L4_label["Standard subgroup (circle)"]');
+  if (hasBothNormal) keyEntries.push('        L5 ==o L5_label["Both normal (thick edge)"]');
+  if (hasOneNormal) keyEntries.push('        L6 --o L6_label["One normal (circle tail)"]');
+  if (hasMorphism) keyEntries.push('        L7 -. "phi" .-> L7_label["Morphism (dashed)"]');
+
+  if (keyEntries.length === 0) {
+    output.push('        KeyEmpty["No elements to display"]');
+  } else {
+    keyEntries.forEach(entry => output.push(entry));
+  }
+
+  for (let i = 1; i <= 7; i++) {
+    output.push(`        style L${i}_label fill:transparent,stroke:none,color:#0B151E;`);
+  }
+
+  output.push('    end');
+  output.push('');
+
+  // ---- Graph Reference ----
+  const graphsWithDesc = lattices.filter(l => l.description);
+  if (graphsWithDesc.length > 0) {
+    output.push('    subgraph GraphRef["Graph Reference"]');
+    graphsWithDesc.forEach((lattice) => {
+      const refId = `graph_${lattice.id}`;
+      const safeLabel = getLabelForMermaid(lattice.label || `Group ${lattice.id}`);
+      const safeDesc = getLabelForMermaid(lattice.description);
+      output.push(`        ${refId}["${safeLabel}: ${safeDesc}"]`);
+      output.push(`        style ${refId} fill:#f4f6f4,stroke:#93b5c8,stroke-dasharray:3 3,color:#0B151E,font-size:10px;`);
+    });
+    output.push('    end');
+    output.push('');
+  }
+
+  // ---- Morphism Reference ----
+  const morphsWithDesc = morphisms.filter(m => m.description);
+  if (morphsWithDesc.length > 0) {
+    output.push('    subgraph MorphRef["Morphism Reference"]');
+    morphsWithDesc.forEach((morphism) => {
+      const refId = `morph_${morphism.id}`;
+      const safeName = getLabelForMermaid(morphism.name || 'phi');
+      const safeDesc = getLabelForMermaid(morphism.description);
+      output.push(`        ${refId}["${safeName}: ${safeDesc}"]`);
+      output.push(`        style ${refId} fill:#e8f0fe,stroke:#6a9ab5,stroke-dasharray:2 2,color:#0B151E,font-size:10px;`);
+    });
+    output.push('    end');
+    output.push('');
+  }
+
+  // ---- Canvas Notes Reference ----
+  if (notes && notes.length > 0) {
+    const nonEmptyNotes = notes.filter(n => n.text && n.text.trim().length > 0);
+    if (nonEmptyNotes.length > 0) {
+      output.push('    subgraph NoteRef["Canvas Notes"]');
+      nonEmptyNotes.forEach((note, idx) => {
+        const refId = `note_${idx}`;
+        const safeNote = getLabelForMermaid(note.text.substring(0, 60));
+        output.push(`        ${refId}["${safeNote}"]`);
+        output.push(`        style ${refId} fill:#fff9e6,stroke:#ca8a04,stroke-dasharray:4 2,color:#0B151E;`);
+      });
+      output.push('    end');
+      output.push('');
+    }
+  }
+
+  // ─── FINAL ──────────────────────────────────────────────────────────
   return output.join('\n');
 }
 // ═══════════════════════════════════════════════════════════════════════
@@ -3289,16 +3422,19 @@ function Epicenter({ x, y, accent, onMouseDown, cameraScale }) {
 // ═══════════════════════════════════════════════════════════════════════
 
 let nextLatticeId = 1;
+
 function makeLatticeEntry(base, canvasW, canvasH, labelOverride, params = {}) {
+  // Use a unique ID: timestamp + random + increment to be safe
+  const id = Date.now() + Math.random() * 1000 + (nextLatticeId++);
   const arrowViews = new Set(["elements", "geometry", "cayley", "flower", "tree"]);
   const showArrows = !arrowViews.has(base.viewType);
   return {
-    id: nextLatticeId++,
+    id,  // <-- now guaranteed unique even across loads
     label: labelOverride,
     kind: base.kind,
-    param: params.param ?? base.param,       
-    param2: params.param2,                 
-    param3: params.param3,                   
+    param: params.param ?? base.param,
+    param2: params.param2,
+    param3: params.param3,
     base,
     nodePositions: {},
     epicenter: { x: canvasW / 2, y: canvasH / 2 },
@@ -3655,6 +3791,7 @@ export default function App() {
 
   // ── Node mouse-down (strand or drag) ─────────────────────────────
   const onNodeMouseDown = useCallback((latticeId, nodeId, e) => {
+    console.log('🖱️ MouseDown on node:', { latticeId, nodeId });
     if (activeMorphismId !== null) {
       e.preventDefault(); e.stopPropagation();
       didDrag.current = false; didDragRef.current = false;
@@ -3881,8 +4018,22 @@ export default function App() {
           el = el.parentElement;
         }
         if (el && el.getAttribute("data-node") === "true") {
-          const toLatticeId = parseInt(el.getAttribute("data-lattice-id"));
-          const toNodeId = parseInt(el.getAttribute("data-node-id"));
+          const rawLatticeId = el.getAttribute("data-lattice-id");
+          const rawNodeId = el.getAttribute("data-node-id");
+          
+          // ✅ MUST use Number(), NOT parseInt()
+          const toLatticeId = parseFloat(el.getAttribute("data-lattice-id"));
+          const toNodeId = parseFloat(el.getAttribute("data-node-id"));
+
+          console.log('🔍 Strand drop target:', {
+            element: el,
+            rawLatticeId,
+            rawNodeId,
+            parsedLatticeId: toLatticeId,
+            parsedNodeId: toNodeId,
+            isValid: !isNaN(toLatticeId) && !isNaN(toNodeId)
+          });
+
           if (!isNaN(toLatticeId) && !isNaN(toNodeId) && !(toLatticeId === fromLatticeId && toNodeId === fromNodeId)) {
             const sid = Date.now() + Math.random();
             setMorphisms(prev => prev.map(m =>
@@ -4617,18 +4768,13 @@ export default function App() {
             <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
               <path d="M0,0 L0,6 L6,3 Z" fill={C.inkMid} opacity="0.6" />
             </marker>
-            {latticeViews.flatMap(({ colorMap }) =>
+            {latticeViews.map(({ entry, colorMap }) =>
               Object.entries(colorMap).map(([ord, col]) => (
-                <marker key={`arr-${ord}`} id={`arr-${ord}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <marker key={`arr-${entry.id}-${ord}`} id={`arr-${entry.id}-${ord}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
                   <path d="M0,0 L0,6 L6,3 Z" fill={col} />
                 </marker>
               ))
             )}
-            {morphisms.map(m => (
-              <marker key={m.id} id={`arr-${m.id}`} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L6,3 Z" fill={m.color} />
-              </marker>
-            ))}
           </defs>
 
           <g transform={`translate(${camera.tx}, ${camera.ty}) scale(${camera.scale})`}>
@@ -4641,7 +4787,7 @@ export default function App() {
                   const col = hl ? orderColor(na.order, colorMap) : "#9aaa88";
                   const sw = hl ? 2.5 : 1.4;
                   const mx = (na.x + nb.x) / 2, my = (na.y + nb.y) / 2;
-                  const markerId = hl ? `arr-${na.order}` : "arr";
+                  const markerId = hl ? `arr-${entry.id}-${na.order}` : "arr";
                   return (
                     <g key={i}>
                       <line x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke={col} strokeWidth={sw} opacity={hl ? 1 : 0.6} strokeLinecap="round" />
@@ -4654,11 +4800,11 @@ export default function App() {
                     </g>
                   );
                 })}
-                {nodes.map(node => <ShapeOccluder key={`occ-${node.id}`} node={node} R={26} />)}
+                {nodes.map(node => <ShapeOccluder key={`occ-${entry.id}-${node.id}`} node={node} R={26} />)}
                 {nodes.map(node => {
                   const key = `${entry.id}:${node.id}`;
                   return (
-                    <ShapeNode key={node.id} node={node} latticeId={entry.id} colorMap={colorMap}
+                    <ShapeNode key={key} node={node} latticeId={entry.id} colorMap={colorMap}
                       isSelected={isNodeSelected(entry.id, node.id)}
                       isAdjacent={adjacentNodes.has(node.id) && !isNodeSelected(entry.id, node.id)}
                       isDrawMode={activeMorphismId !== null}
@@ -4737,27 +4883,74 @@ export default function App() {
               const srcNode = srcLV.nodes.find(n => n.id === s.fromNodeId);
               const tgtNode = tgtLV.nodes.find(n => n.id === s.toNodeId);
               if (!srcNode || !tgtNode) return null;
+
               const cam = camera;
               const x1s = srcNode.x * cam.scale + cam.tx, y1s = srcNode.y * cam.scale + cam.ty;
               const x2s = tgtNode.x * cam.scale + cam.tx, y2s = tgtNode.y * cam.scale + cam.ty;
               const nodeR = 26 * cam.scale;
+
+              // Direction and distance
               const dx = x2s - x1s, dy = y2s - y1s;
               const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+              // Trim endpoints at node borders
               const x1 = x1s + (dx / len) * nodeR * 1.05;
               const y1 = y1s + (dy / len) * nodeR * 1.05;
               const x2 = x2s - (dx / len) * nodeR * 1.05;
               const y2 = y2s - (dy / len) * nodeR * 1.05;
-              const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-              const arc = Math.min(90, len * 0.38);
-              const cpx = mx - (dy / len) * arc, cpy = my + (dx / len) * arc;
-              const pathD = `M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`;
+
+              // Check if there is an edge between these two nodes (only if same lattice)
+              let useArc = false;
+              if (s.fromLatticeId === s.toLatticeId) {
+                const edges = srcLV.entry.base.edges;
+                const exists = edges.some(([a, b]) =>
+                  (a === s.fromNodeId && b === s.toNodeId) ||
+                  (a === s.toNodeId && b === s.fromNodeId)
+                );
+                if (exists) useArc = true;
+              }
+
+              let pathD;
+              if (useArc) {
+                // Quadratic bezier with control point offset perpendicular to the line
+                const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+                // Scale arc offset based on distance (but cap it)
+                const arc = Math.min(80, len * 0.25); // reduced offset for gentler curve
+                const cpx = mx - (dy / len) * arc;
+                const cpy = my + (dx / len) * arc;
+                pathD = `M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`;
+              } else {
+                pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
+              }
+
+              // Determine styling
               const lit = isActive || isPanelSelected;
+              const color = m.color;
+              const width = lit ? 2.6 : 1.6;
+              const opacity = lit ? 1 : 0.38;
+              const dash = lit ? undefined : "6 4";
+
               return (
-                <g key={s.id}>
-                  {lit && <path d={pathD} stroke={m.color} strokeWidth={isActive ? 7 : 5} fill="none" opacity={isActive ? 0.18 : 0.28} strokeLinecap="round" />}
-                  <path d={pathD} stroke={m.color} strokeWidth={lit ? 2.6 : 1.6} fill="none"
-                    opacity={lit ? 1 : 0.38} strokeDasharray={lit ? undefined : "6 4"}
-                    markerEnd={`url(#sarr-${m.id})`} />
+                <g key={`${m.id}-${s.id}`}>
+                  {lit && (
+                    <path
+                      d={pathD}
+                      stroke={color}
+                      strokeWidth={isActive ? 7 : 5}
+                      fill="none"
+                      opacity={isActive ? 0.18 : 0.28}
+                      strokeLinecap="round"
+                    />
+                  )}
+                  <path
+                    d={pathD}
+                    stroke={color}
+                    strokeWidth={width}
+                    fill="none"
+                    opacity={opacity}
+                    strokeDasharray={dash}
+                    markerEnd={`url(#sarr-${m.id})`}
+                  />
                 </g>
               );
             });
@@ -5335,7 +5528,12 @@ export default function App() {
                 const convertKeysToSelectedNodes = (keys) => {
                   const result = {};
                   for (const key of keys) {
-                    const [lid, nid] = key.split(':').map(Number);
+                    if (!key || typeof key !== 'string') continue;
+                    const parts = key.split(':');
+                    if (parts.length !== 2) continue;
+                    const lid = Number(parts[0]);
+                    const nid = Number(parts[1]);
+                    if (isNaN(lid) || isNaN(nid)) continue; // Skip invalid entries
                     if (!result[lid]) result[lid] = new Set();
                     result[lid].add(nid);
                   }
@@ -5469,10 +5667,7 @@ export default function App() {
           {/* Pane 1: Selected Graph */}
           <Pane title="Selected Graph" open={rightPane1Open} onToggle={() => setRightPane1Open(o => !o)} flex={rightPane1Flex} scrollClass="sky-scroll-right">
             {(() => {
-              // All lattices that are either explicitly selected or have at least one selected node
-              // Only graphs with actually-selected nodes appear here
               const activeLatticeNodes = new Set(allSelectedNodes.map(n => n.latticeId));
-              // Only show graphs that have selected nodes or are explicitly focused
               const displayNodes = [...activeLatticeNodes];
 
               if (displayNodes.length === 0) return (
@@ -5488,63 +5683,113 @@ export default function App() {
                     const l  = lattices.find(x => x.id === selId);
                     if (!l || !lv) return null;
                     const { entry, nodes, fullNode, colorMap, accent, zParts, expVal, statsBase } = lv;
-                    // Always show stats from the real base (even when collapsed)
                     const displayBase = statsBase ?? entry.base;
+                    
                     return (
                       <Section key={selId} label={entry.label} depth={0} accent={accent} defaultOpen={false}
                         badge={entry.isCollapsed ? `⊙ ${displayBase.nodes.length}n` : `${displayBase.nodes.length}n`}>
 
-                        {/* ── Stats ── */}
-                        <Section label="Stats" depth={1} defaultOpen={false}>
-                          {/* Isomorphism type / structure — own row */}
-                          {entry.kind === "Un" ? (
-                            <SectionRow label={`U(${entry.param})`} value={formatZ(zParts)} />
-                          ) : (
-                            <SectionRow label="Group" value={entry.label} />
-                          )}
-                          <SectionRow label="Kind"   value={l.kind} />
-                          <SectionRow label="Nodes"  value={String(displayBase.nodes.length)} />
-                          <SectionRow label="Edges"  value={String(displayBase.edges.length)} />
-                          {fullNode && <>
-                            <SectionRow label="|G|"    value={String(fullNode.order)} />
-                            <SectionRow label="Levels" value={String((displayBase.maxLevel ?? 0) + 1)} />
-                          </>}
-                          {entry.kind === "Un" && <>
-                            <SectionRow label="Exponent" value={String(expVal)} />
-                            <SectionRow label="Abelian"  value="yes" />
-                          </>}
-                          {entry.isCollapsed && <SectionRow label="State" value="collapsed ⊙" />}
+                        {/* ── STYLE FOLDER ── */}
+                        <Section label="Style" depth={1} defaultOpen={false}>
+                          
+                          {/* Rename Graph */}
+                          <Section label="Rename" depth={2} defaultOpen={false}>
+                            <SectionBody>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Title</span>
+                                <input 
+                                  value={entry.label || ''}
+                                  onChange={e => updateLattice(entry.id, { label: e.target.value || `Graph ${entry.id}` })}
+                                  style={{ 
+                                    flex: 1, 
+                                    background: C.bg, 
+                                    border: `1px solid ${C.border}`, 
+                                    borderRadius: 3, 
+                                    color: C.ink, 
+                                    fontSize: 10, 
+                                    padding: "3px 6px", 
+                                    outline: "none", 
+                                    fontFamily: "'Courier New', monospace" 
+                                  }}
+                                  placeholder="Enter graph name..."
+                                />
+                              </div>
+                              <div style={{ fontSize: 8, color: C.inkFaint, marginTop: 4, letterSpacing: 0.5 }}>
+                                Changes the display name only. The underlying group data remains intact.
+                              </div>
+                            </SectionBody>
+                          </Section>
+
+                          {/* Stats */}
+                          <Section label="Stats" depth={2} defaultOpen={false}>
+                            {entry.kind === "Un" ? (
+                              <SectionRow label={`U(${entry.param})`} value={formatZ(zParts)} />
+                            ) : (
+                              <SectionRow label="Group" value={entry.label} />
+                            )}
+                            <SectionRow label="Kind"   value={l.kind} />
+                            <SectionRow label="Nodes"  value={String(displayBase.nodes.length)} />
+                            <SectionRow label="Edges"  value={String(displayBase.edges.length)} />
+                            {fullNode && <>
+                              <SectionRow label="|G|"    value={String(fullNode.order)} />
+                              <SectionRow label="Levels" value={String((displayBase.maxLevel ?? 0) + 1)} />
+                            </>}
+                            {entry.kind === "Un" && <>
+                              <SectionRow label="Exponent" value={String(expVal)} />
+                              <SectionRow label="Abelian"  value="yes" />
+                            </>}
+                            {entry.isCollapsed && <SectionRow label="State" value="collapsed ⊙" />}
+                          </Section>
+
+                          {/* Lattice Notes */}
+                          <Section label="Lattice Notes" depth={2} defaultOpen={false}>
+                            <SectionBody>
+                              <textarea
+                                value={entry.description || ''}
+                                onChange={e => updateLatticeDescription(entry.id, e.target.value)}
+                                placeholder="Add a description for this lattice..."
+                                style={{
+                                  width: "100%",
+                                  minHeight: 80,
+                                  background: C.bg,
+                                  border: `1px solid ${C.border}`,
+                                  borderRadius: 3,
+                                  color: C.ink,
+                                  fontSize: 10,
+                                  padding: "5px 7px",
+                                  outline: "none",
+                                  resize: "vertical",
+                                  boxSizing: "border-box",
+                                  fontFamily: "'Courier New', monospace",
+                                  lineHeight: 1.5
+                                }}
+                              />
+                            </SectionBody>
+                          </Section>
+
+                          {/* Display Toggles */}
+                          <Section label="Display" depth={2} defaultOpen={false}>
+                            <SectionToggle label="Show Edges"        checked={entry.showEdges}     onChange={v => updateLattice(entry.id, { showEdges: v })} />
+                            <SectionToggle label="Show Arrows"       checked={entry.showArrows}    onChange={v => updateLattice(entry.id, { showArrows: v })} />
+                            <SectionToggle label="Show Epicenter ☉"  checked={entry.showEpicenter} onChange={v => updateLattice(entry.id, { showEpicenter: v })} />
+                            {(entry.base.viewType === "hasse" || !entry.base.viewType) && <>
+                              <SectionToggle label="Gen. Offset (Hasse)"
+                                checked={entry.hasseLayout?.genOffset ?? false}
+                                onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), genOffset: v } })} />
+                              <SectionToggle label="Rank by Order"
+                                checked={entry.hasseLayout?.rankByOrder ?? false}
+                                onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), rankByOrder: v } })} />
+                            </>}
+                            <SectionBody>
+                              <div style={{ fontSize: 9, color: C.inkFaint, lineHeight: 1.6 }}>Drag the ☉ marker on the canvas to move the entire lattice.</div>
+                            </SectionBody>
+                          </Section>
+
                         </Section>
-                        <Section label="Lattice Notes" depth={1} defaultOpen={false}>
-                          <SectionBody>
-                            <textarea
-                              value={entry.description || ''}
-                              onChange={e => {
-                                // You'll need to add this function
-                                updateLatticeDescription(entry.id, e.target.value);
-                              }}
-                              placeholder="Add a description for this lattice..."
-                              style={{
-                                width: "100%",
-                                minHeight: 80,
-                                background: C.bg,
-                                border: `1px solid ${C.border}`,
-                                borderRadius: 3,
-                                color: C.ink,
-                                fontSize: 10,
-                                padding: "5px 7px",
-                                outline: "none",
-                                resize: "vertical",
-                                boxSizing: "border-box",
-                                fontFamily: "'Courier New', monospace",
-                                lineHeight: 1.5
-                              }}
-                            />
-                          </SectionBody>
-                        </Section>    
-                        {/* ── Subgroups (with order color legend) ── */}
+
+                        {/* ── SUBGROUPS ── */}
                         <Section label="Subgroups" depth={1} defaultOpen={false} badge={nodes.length}>
-                          {/* Order color legend inside subgroups */}
+                          {/* Order color legend */}
                           <SectionBody>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                               {Object.entries(colorMap).map(([ord, col]) => (
@@ -5558,7 +5803,6 @@ export default function App() {
                           <SectionBody noPad>
                             <div style={{ padding: "6px 8px" }}>
                               {[...nodes].sort((a, b) => a.order - b.order).map(node => {
-                                const key = `${l.id}:${node.id}`;
                                 return (
                                   <SubgroupRow 
                                     key={node.id} 
@@ -5573,25 +5817,7 @@ export default function App() {
                           </SectionBody>
                         </Section>
 
-                        {/* ── Display toggles ── */}
-                        <Section label="Display" depth={1} defaultOpen={false}>
-                          <SectionToggle label="Show Edges"        checked={entry.showEdges}     onChange={v => updateLattice(entry.id, { showEdges: v })} />
-                          <SectionToggle label="Show Arrows"       checked={entry.showArrows}    onChange={v => updateLattice(entry.id, { showArrows: v })} />
-                          <SectionToggle label="Show Epicenter ☉"  checked={entry.showEpicenter} onChange={v => updateLattice(entry.id, { showEpicenter: v })} />
-                          {(entry.base.viewType === "hasse" || !entry.base.viewType) && <>
-                            <SectionToggle label="Gen. Offset (Hasse)"
-                              checked={entry.hasseLayout?.genOffset ?? false}
-                              onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), genOffset: v } })} />
-                            <SectionToggle label="Rank by Order"
-                              checked={entry.hasseLayout?.rankByOrder ?? false}
-                              onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), rankByOrder: v } })} />
-                          </>}
-                          <SectionBody>
-                            <div style={{ fontSize: 9, color: C.inkFaint, lineHeight: 1.6 }}>Drag the ☉ marker on the canvas to move the entire lattice.</div>
-                          </SectionBody>
-                        </Section>
-
-                        {/* ── Graph actions: Delete + Collapse ── */}
+                        {/* ── GRAPH ACTIONS ── */}
                         {(() => {
                           const confirmOpen = confirmDeleteNodes.has(l.id);
                           const setConfirmOpen = (v) => setConfirmDeleteNodes(prev => {
@@ -5602,7 +5828,6 @@ export default function App() {
                           return (
                             <SectionBody>
                               <div style={{ display: "flex", gap: 6 }}>
-                                {/* Delete button */}
                                 <button
                                   onClick={() => setConfirmOpen(!confirmOpen)}
                                   style={{
@@ -5617,7 +5842,6 @@ export default function App() {
                                   onMouseLeave={e => { if (!confirmOpen) e.currentTarget.style.background = "transparent"; }}>
                                   🗑 Delete
                                 </button>
-                                {/* Collapse ↔ Expand toggle — non-destructive, preserves base */}
                                 {entry.isCollapsed ? (
                                   <button
                                     title="Expand graph back to full layout. Morphism strands restore to original endpoints."

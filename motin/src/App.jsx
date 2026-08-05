@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
 import JSZip from 'jszip';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -8,7 +8,6 @@ import JSZip from 'jszip';
 //  Identity is always index 0.
 // ═══════════════════════════════════════════════════════════════════════
 
-// ── SAVE / LOAD SYSTEM ────────────────────────────────────────────────
 // ── SAVE / LOAD SYSTEM ────────────────────────────────────────────────
 
 const SAVE_VERSION = "1.0.0";
@@ -2659,126 +2658,287 @@ function SubgroupRow({ node, colorMap, isSelected, onToggle }) {
 //  SETTINGS MODAL
 // ═══════════════════════════════════════════════════════════════════════
 
-function SettingsModal({ 
-  isOpen, 
-  onClose, 
-  gridSettings, 
-  setGridSettings, 
-  camera, 
+function SettingsModal({
+  isOpen,
+  onClose,
+  gridSettings,
+  setGridSettings,
+  camera,
   setCamera,
   lattices,
   morphisms,
   notes,
   drawStrokes,
   nodeCustomStyles,
-  onLoadState
+  onLoadState,
+  panelRef,
 }) {
-  const [activeTab, setActiveTab] = useState('grid');
-  const [previewScale, setPreviewScale] = useState(0.2);
+  const [activeTab, setActiveTab] = useState('data');
   const [exportFormat, setExportFormat] = useState('mermaid');
   const [saveName, setSaveName] = useState(`lattice_${new Date().toISOString().slice(0,10)}`);
-  const previewRef = useRef(null);
-  
-  useEffect(() => {
-    if (!previewRef.current) return;
-    const canvas = previewRef.current;
+
+  const previewCanvasRef = useRef(null);
+  const [previewCam, setPreviewCam] = useState({ x: 0, y: 0, k: 1 });
+  const isPreviewPanning = useRef(false);
+  const previewPanStart = useRef({ mouseX: 0, mouseY: 0, camX: 0, camY: 0 });
+
+  // --- 1. SIMPLE BOUNDING BOX WITH TIGHT MARGINS ---
+  const getLatticeBounds = () => {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let hasNodes = false;
+
+    lattices.forEach((lattice) => {
+      const base = lattice.base;
+      if (!base || !base.nodes) return;
+      const epicenter = lattice.epicenter || { x: 0, y: 0 };
+      
+      base.nodes.forEach((node) => {
+        const wx = (node.x - base.W / 2) + epicenter.x;
+        const wy = (node.y - base.H / 2) + epicenter.y;
+        minX = Math.min(minX, wx);
+        maxX = Math.max(maxX, wx);
+        minY = Math.min(minY, wy);
+        maxY = Math.max(maxY, wy);
+        hasNodes = true;
+      });
+    });
+
+    if (!hasNodes) {
+      return { x: -200, y: -150, width: 400, height: 300 };
+    }
+    
+    // Tight padding (5% of size, minimum 10px)
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const padX = Math.max(width * 0.05, 10);
+    const padY = Math.max(height * 0.05, 10);
+    
+    return {
+      x: minX - padX,
+      y: minY - padY,
+      width: width + padX * 2,
+      height: height + padY * 2,
+    };
+  };
+
+  // --- 2. COMPUTE FIT CAMERA ---
+  const computeFitCamera = () => {
+    const bounds = getLatticeBounds();
+    const canvasW = 400, canvasH = 320;
+    
+    const scaleX = canvasW / bounds.width;
+    const scaleY = canvasH / bounds.height;
+    // Use 90% of the max scale to leave a small margin
+    const scale = Math.min(scaleX, scaleY) * 0.9;
+    
+    const cx = bounds.x + bounds.width / 2;
+    const cy = bounds.y + bounds.height / 2;
+    
+    return {
+      k: Math.max(0.1, Math.min(3, scale)),
+      x: canvasW / 2 - cx * scale,
+      y: canvasH / 2 - cy * scale,
+    };
+  };
+
+  // --- 3. DRAWING FUNCTION ---
+  const drawPreview = useCallback(() => {
+    const canvas = previewCanvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     
     ctx.clearRect(0, 0, W, H);
-    
-    const scale = previewScale;
-    const offsetX = (W - 400 * scale) / 2;
-    const offsetY = (H - 300 * scale) / 2;
-    
+    ctx.save();
+    ctx.translate(previewCam.x, previewCam.y);
+    ctx.scale(previewCam.k, previewCam.k);
+
+    // Background
     ctx.fillStyle = '#F4F6F4';
-    ctx.fillRect(0, 0, W, H);
-    
-    // Grid
+    ctx.fillRect(-2000, -2000, 4000, 4000);
+
+    // Grid (simplified for preview)
     if (gridSettings.pattern !== 'none') {
       ctx.strokeStyle = gridSettings.color;
-      ctx.lineWidth = 0.5;
-      const gridSize = gridSettings.size * scale;
-      for (let x = 0; x < W; x += gridSize) {
+      ctx.lineWidth = 0.5 / previewCam.k;
+      const size = gridSettings.size;
+      const startX = -2000 - (previewCam.x % (size * previewCam.k)) / previewCam.k;
+      const startY = -2000 - (previewCam.y % (size * previewCam.k)) / previewCam.k;
+      for (let x = startX; x < 4000; x += size) {
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, H);
+        ctx.moveTo(x, -2000);
+        ctx.lineTo(x, 2000);
         ctx.stroke();
       }
-      for (let y = 0; y < H; y += gridSize) {
+      for (let y = startY; y < 4000; y += size) {
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(W, y);
+        ctx.moveTo(-2000, y);
+        ctx.lineTo(2000, y);
         ctx.stroke();
       }
     }
-    
+
     // Draw lattices
     lattices.forEach((lattice) => {
       const base = lattice.base;
       if (!base || !base.nodes) return;
-      
-      const cx = offsetX + (lattice.epicenter.x || 200) * scale;
-      const cy = offsetY + (lattice.epicenter.y || 150) * scale;
-      
+      const epicenter = lattice.epicenter || { x: 0, y: 0 };
+
       if (lattice.showEdges && base.edges) {
         base.edges.forEach(([a, b]) => {
-          const na = base.nodes[a];
-          const nb = base.nodes[b];
+          const na = base.nodes[a], nb = base.nodes[b];
           if (!na || !nb) return;
-          const x1 = cx + (na.x - (base.W || 400)/2) * scale;
-          const y1 = cy + (na.y - (base.H || 300)/2) * scale;
-          const x2 = cx + (nb.x - (base.W || 400)/2) * scale;
-          const y2 = cy + (nb.y - (base.H || 300)/2) * scale;
-          
+          const x1 = (na.x - base.W / 2) + epicenter.x;
+          const y1 = (na.y - base.H / 2) + epicenter.y;
+          const x2 = (nb.x - base.W / 2) + epicenter.x;
+          const y2 = (nb.y - base.H / 2) + epicenter.y;
           ctx.beginPath();
           ctx.moveTo(x1, y1);
           ctx.lineTo(x2, y2);
           ctx.strokeStyle = '#93b5c8';
-          ctx.lineWidth = 0.8;
+          ctx.lineWidth = 1.5 / previewCam.k;
           ctx.stroke();
         });
       }
-      
-      base.nodes.forEach(node => {
-        const x = cx + (node.x - (base.W || 400)/2) * scale;
-        const y = cy + (node.y - (base.H || 300)/2) * scale;
-        const r = 6 * scale;
-        
-        if (node.isNormal) {
-          ctx.fillStyle = '#4ade80';
-        } else if (node.order === 1) {
-          ctx.fillStyle = '#fbbf24';
-        } else {
-          const colors = ['#0284c7', '#7c3aed', '#db2777', '#ea580c', '#16a34a'];
-          ctx.fillStyle = colors[node.id % colors.length];
-        }
-        
+
+      base.nodes.forEach((node) => {
+        const x = (node.x - base.W / 2) + epicenter.x;
+        const y = (node.y - base.H / 2) + epicenter.y;
+        const r = Math.max(4, 8 / previewCam.k);
+        ctx.fillStyle = node.isNormal ? '#4ade80' : node.order === 1 ? '#fbbf24' : '#0284c7';
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#0B151E';
-        ctx.lineWidth = 0.5;
+        ctx.lineWidth = 0.8 / previewCam.k;
         ctx.stroke();
       });
     });
-    
-    // Draw notes
-    notes.forEach(note => {
-      const x = offsetX + note.x * scale;
-      const y = offsetY + note.y * scale;
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillRect(x, y, 40 * scale, 30 * scale);
-      ctx.strokeStyle = '#93b5c8';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x, y, 40 * scale, 30 * scale);
-    });
-    
-    ctx.fillStyle = '#0B151E';
-    ctx.font = '8px monospace';
-    ctx.fillText(`Lattices: ${lattices.length} | Morphisms: ${morphisms.length}`, 8, H - 6);
-  }, [lattices, morphisms, notes, gridSettings, previewScale]);
-  
+
+    ctx.restore();
+  }, [lattices, gridSettings, previewCam]);
+
+  // --- 4. INITIALIZE ON OPEN ---
+  useEffect(() => {
+    if (isOpen) {
+      const newCam = computeFitCamera();
+      setPreviewCam(newCam);
+    }
+  }, [isOpen]);
+
+  // --- 5. DRAW WHENEVER ANYTHING CHANGES ---
+  useEffect(() => {
+    if (!isOpen) return;
+    drawPreview();
+  }, [drawPreview, isOpen]);
+
+  // --- 6. PREVIEW INTERACTIONS ---
+  const onPreviewWheel = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = previewCanvasRef.current.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setPreviewCam(prev => ({
+      k: Math.min(3, Math.max(0.1, prev.k * delta)),
+      x: mx - (mx - prev.x) * delta,
+      y: my - (my - prev.y) * delta,
+    }));
+  };
+
+  const onPreviewMouseDown = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    isPreviewPanning.current = true;
+    previewPanStart.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      camX: previewCam.x,
+      camY: previewCam.y,
+    };
+    document.body.style.cursor = 'grabbing';
+  };
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!isPreviewPanning.current) return;
+      const dx = e.clientX - previewPanStart.current.mouseX;
+      const dy = e.clientY - previewPanStart.current.mouseY;
+      setPreviewCam(prev => ({
+        ...prev,
+        x: previewPanStart.current.camX + dx,
+        y: previewPanStart.current.camY + dy,
+      }));
+    };
+    const onUp = () => {
+      if (isPreviewPanning.current) {
+        isPreviewPanning.current = false;
+        document.body.style.cursor = '';
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  const resetPreviewView = () => {
+    setPreviewCam(computeFitCamera());
+  };
+
+  // --- 7. PNG EXPORT (unchanged) ---
+  const exportPNG = useCallback(async () => {
+    const mainElement = panelRef?.current;
+    if (!mainElement) return;
+    const svg = mainElement.querySelector('svg');
+    if (!svg) return;
+
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('style', 'position:absolute;top:0;left:0;width:100%;height:100%;');
+
+    const serializer = new XMLSerializer();
+    let source = serializer.serializeToString(clone);
+    if (!source.includes('xmlns')) {
+      source = source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+    const svgBlob = new Blob([
+      `<?xml version="1.0" standalone="no"?>\r\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\r\n`,
+      source
+    ], { type: 'image/svg+xml;charset=utf-8' });
+
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const bbox = svg.getBBox ? svg.getBBox() : { x: 0, y: 0, width: 800, height: 600 };
+      const padding = 20;
+      const scale = 2;
+      const w = (bbox.width + padding * 2) * scale;
+      const h = (bbox.height + padding * 2) * scale;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#F4F6F4';
+      ctx.fillRect(0, 0, w, h);
+      const dx = (w - img.width * scale) / 2;
+      const dy = (h - img.height * scale) / 2;
+      ctx.drawImage(img, dx, dy, img.width * scale, img.height * scale);
+
+      const link = document.createElement('a');
+      link.download = `${saveName || 'lattice_diagram'}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }, [panelRef, saveName]);
+
+  // --- 8. SAVE / LOAD ---
   const handleSave = useCallback(async (format) => {
     const state = {
       lattices,
@@ -2789,7 +2949,6 @@ function SettingsModal({
       gridSettings,
       camera,
     };
-    
     if (format === 'mermaid') {
       const mermaid = generateMermaidFile(lattices, morphisms);
       const blob = new Blob([mermaid], { type: 'text/plain' });
@@ -2799,7 +2958,7 @@ function SettingsModal({
       a.download = `${saveName || 'lattice_diagram'}.mmd`;
       a.click();
       URL.revokeObjectURL(url);
-    } else {
+    } else if (format === 'json' || format === 'state') {
       const serialized = serializeCanvasState(state);
       const json = JSON.stringify(serialized, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -2811,7 +2970,7 @@ function SettingsModal({
       URL.revokeObjectURL(url);
     }
   }, [lattices, morphisms, notes, drawStrokes, nodeCustomStyles, gridSettings, camera, saveName]);
-  
+
   const handleLoad = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -2819,7 +2978,6 @@ function SettingsModal({
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
       const reader = new FileReader();
       reader.onload = (event) => {
         try {
@@ -2835,17 +2993,17 @@ function SettingsModal({
     };
     input.click();
   }, [onLoadState, onClose]);
-  
-  const tabs = [
-    { id: 'grid', label: 'Grid', icon: '▦' },
-    { id: 'save', label: 'Save/Load', icon: '💾' },
-    { id: 'export', label: 'Export', icon: '↗' },
-  ];
-  
+
   if (!isOpen) return null;
-  
+
+  const tabs = [
+    { id: 'data', label: 'Save/Export' },
+    { id: 'info', label: 'Info' },
+    { id: 'style', label: 'Style' },
+  ];
+
   return (
-    <div 
+    <div
       style={{
         position: "fixed",
         inset: 0,
@@ -2855,7 +3013,6 @@ function SettingsModal({
         alignItems: "center",
         justifyContent: "center",
         backdropFilter: "blur(4px)",
-        animation: "fadeIn 0.2s ease-out",
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -2869,19 +3026,19 @@ function SettingsModal({
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      
+
       <div style={{
         background: "#FFFFFF",
         borderRadius: 16,
         boxShadow: "0 24px 64px rgba(11,21,30,0.20), 0 0 0 1px rgba(11,21,30,0.04)",
         width: 820,
         maxWidth: "92vw",
+        aspectRatio: "16 / 9",
         maxHeight: "85vh",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
       }}>
-        
         {/* Header */}
         <div style={{
           padding: "16px 24px",
@@ -2906,7 +3063,7 @@ function SettingsModal({
               letterSpacing: 2,
             }}>SETTINGS</span>
           </div>
-          <button 
+          <button
             onClick={onClose}
             style={{
               background: "none",
@@ -2924,7 +3081,7 @@ function SettingsModal({
             ×
           </button>
         </div>
-        
+
         {/* Main content */}
         <div style={{
           display: "flex",
@@ -2933,7 +3090,7 @@ function SettingsModal({
           overflow: "hidden",
         }}>
           
-          {/* Left: Preview */}
+          {/* Left: Interactive Preview */}
           <div style={{
             width: "45%",
             padding: "20px 16px 20px 20px",
@@ -2941,6 +3098,7 @@ function SettingsModal({
             flexDirection: "column",
             borderRight: "1px solid #E8ECEE",
             background: "#FAFBFB",
+            overflow: "hidden",
           }}>
             <div style={{
               fontSize: 9,
@@ -2949,62 +3107,53 @@ function SettingsModal({
               textTransform: "uppercase",
               marginBottom: 10,
               fontFamily: "'Courier New', monospace",
-            }}>Preview</div>
-            
-            <div style={{
-              flex: 1,
-              background: "#FFFFFF",
-              borderRadius: 8,
-              border: "1px solid #DEE7DC",
-              overflow: "hidden",
-              position: "relative",
-              minHeight: 200,
             }}>
-              <canvas 
-                ref={previewRef}
-                width={350}
-                height={280}
+              Preview <span style={{ fontWeight: 300, fontSize: 8 }}>(drag to pan • scroll to zoom)</span>
+            </div>
+            
+            <div
+              style={{
+                flex: 1,
+                background: "#FFFFFF",
+                borderRadius: 8,
+                border: "1px solid #DEE7DC",
+                overflow: "hidden",
+                position: "relative",
+                minHeight: 0,
+                cursor: "grab",
+              }}
+              onWheel={onPreviewWheel}
+              onMouseDown={onPreviewMouseDown}
+            >
+              <canvas
+                ref={previewCanvasRef}
+                width={400}
+                height={320}
                 style={{
                   width: "100%",
                   height: "100%",
                   display: "block",
                 }}
               />
-            </div>
-            
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginTop: 10,
-            }}>
-              <span style={{
-                fontSize: 8,
-                color: "#3a6278",
-                letterSpacing: 1,
-                textTransform: "uppercase",
-              }}>Zoom</span>
-              <input
-                type="range"
-                min={0.1}
-                max={0.5}
-                step={0.02}
-                value={previewScale}
-                onChange={e => setPreviewScale(parseFloat(e.target.value))}
+              <button
+                onClick={resetPreviewView}
                 style={{
-                  flex: 1,
-                  accentColor: "#1e3d54",
-                  height: 4,
+                  position: "absolute",
+                  bottom: 8,
+                  right: 8,
+                  background: "rgba(255,255,255,0.85)",
+                  border: "1px solid #DEE7DC",
+                  borderRadius: 4,
+                  padding: "2px 8px",
+                  fontSize: 8,
+                  fontFamily: "'Courier New', monospace",
+                  color: "#3a6278",
                   cursor: "pointer",
+                  backdropFilter: "blur(4px)",
                 }}
-              />
-              <span style={{
-                fontSize: 9,
-                color: "#3a6278",
-                fontFamily: "'Courier New', monospace",
-                minWidth: 36,
-                textAlign: "right",
-              }}>{Math.round(previewScale * 100)}%</span>
+              >
+                Reset View
+              </button>
             </div>
             
             <div style={{
@@ -3021,7 +3170,7 @@ function SettingsModal({
               <span>▣ {notes.length}</span>
             </div>
           </div>
-          
+
           {/* Right: Tabs */}
           <div style={{
             flex: 1,
@@ -3053,22 +3202,8 @@ function SettingsModal({
                     border: activeTab === tab.id ? "none" : "1px solid transparent",
                     cursor: "pointer",
                     transition: "all 0.15s",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                  }}
-                  onMouseEnter={e => {
-                    if (activeTab !== tab.id) {
-                      e.currentTarget.style.background = "#F4F6F4";
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (activeTab !== tab.id) {
-                      e.currentTarget.style.background = "transparent";
-                    }
                   }}
                 >
-                  <span style={{ fontSize: 11 }}>{tab.icon}</span>
                   {tab.label}
                 </button>
               ))}
@@ -3076,100 +3211,13 @@ function SettingsModal({
             
             <div style={{
               flex: 1,
-              overflow: "auto",
-              animation: "slideIn 0.2s ease-out",
+              overflowY: "auto",
+              overflowX: "hidden",
+              scrollbarGutter: "stable",
             }}>
-              {activeTab === 'grid' && (
+              {/* DATA TAB */}
+              {activeTab === 'data' && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div>
-                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 8 }}>Pattern</div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {[["lines","Lines"],["dots","Dots"],["cross","Cross"],["none","None"]].map(([val, lbl]) => (
-                        <button key={val} onClick={() => setGridSettings(g => ({ ...g, pattern: val }))}
-                          style={{
-                            padding: "5px 12px",
-                            borderRadius: 6,
-                            fontSize: 9,
-                            cursor: "pointer",
-                            letterSpacing: 1,
-                            fontFamily: "'Courier New', monospace",
-                            background: gridSettings.pattern === val ? "#1e3d54" : "transparent",
-                            border: gridSettings.pattern === val ? "none" : "1px solid #DEE7DC",
-                            color: gridSettings.pattern === val ? "#FFFFFF" : "#3a6278",
-                            transition: "all 0.1s",
-                          }}
-                        >
-                          {lbl}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 6 }}>Size: {gridSettings.size}px</div>
-                    <input
-                      type="range"
-                      min={16}
-                      max={80}
-                      value={gridSettings.size}
-                      onChange={e => setGridSettings(g => ({ ...g, size: parseInt(e.target.value) }))}
-                      style={{ width: "100%", accentColor: "#1e3d54", cursor: "pointer" }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 6 }}>Color</div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {["#DEE7DC","#d4d4d8","#c7d2e8","#f3d8c0","#d4e8d4","#e8d4e8","#1e3d54"].map(col => (
-                        <div key={col} onClick={() => setGridSettings(g => ({ ...g, color: col }))}
-                          style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: "50%",
-                            cursor: "pointer",
-                            background: col,
-                            border: gridSettings.color === col ? "2.5px solid #1e3d54" : "1.5px solid #DEE7DC",
-                            boxSizing: "border-box",
-                            transition: "border 0.1s",
-                          }}
-                        />
-                      ))}
-                      <input
-                        type="color"
-                        value={gridSettings.color}
-                        onChange={e => setGridSettings(g => ({ ...g, color: e.target.value }))}
-                        style={{ width: 22, height: 22, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0 }}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div style={{ borderTop: "1px solid #E8ECEE", paddingTop: 14 }}>
-                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 6 }}>Camera</div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 9, color: "#3a6278", fontFamily: "'Courier New', monospace" }}>
-                      <span>Zoom: {Math.round(camera.scale * 100)}%</span>
-                      <button
-                        onClick={() => setCamera({ tx: 0, ty: 0, scale: 1 })}
-                        style={{
-                          padding: "3px 12px",
-                          borderRadius: 4,
-                          border: "1px solid #DEE7DC",
-                          background: "transparent",
-                          cursor: "pointer",
-                          fontSize: 8,
-                          color: "#3a6278",
-                          letterSpacing: 1,
-                          fontFamily: "'Courier New', monospace",
-                        }}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {activeTab === 'save' && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div>
                     <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 4 }}>File Name</div>
                     <input
@@ -3208,7 +3256,7 @@ function SettingsModal({
                         transition: "background 0.15s",
                       }}
                     >
-                      💾 Save State
+                      Save State
                     </button>
                     <button
                       onClick={handleLoad}
@@ -3227,35 +3275,19 @@ function SettingsModal({
                         transition: "all 0.15s",
                       }}
                     >
-                      📂 Load State
+                      Load State
                     </button>
                   </div>
                   
-                  <div style={{ 
-                    background: "#F4F6F4", 
-                    borderRadius: 6, 
-                    padding: "10px 12px",
-                    fontSize: 8,
-                    color: "#3a6278",
-                    lineHeight: 1.6,
-                    fontFamily: "'Courier New', monospace",
-                  }}>
-                    <div style={{ marginBottom: 4, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase" }}>
-                      ℹ️ State Files (.psinite)
-                    </div>
-                    <div>Saves all lattices, morphisms, notes, drawings, and camera position.</div>
-                  </div>
-                </div>
-              )}
-              
-              {activeTab === 'export' && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <hr style={{ borderColor: "#E8ECEE", margin: "4px 0" }} />
+
                   <div>
                     <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 6 }}>Export Format</div>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {[
                         ['mermaid', 'Mermaid'],
                         ['json', 'JSON'],
+                        ['png', 'PNG'],
                       ].map(([val, lbl]) => (
                         <button
                           key={val}
@@ -3280,7 +3312,7 @@ function SettingsModal({
                   </div>
                   
                   <button
-                    onClick={() => handleSave(exportFormat)}
+                    onClick={exportFormat === 'png' ? exportPNG : () => handleSave(exportFormat)}
                     disabled={lattices.length === 0 && morphisms.length === 0}
                     style={{
                       padding: "8px 16px",
@@ -3296,7 +3328,9 @@ function SettingsModal({
                       transition: "background 0.15s",
                     }}
                   >
-                    {exportFormat === 'mermaid' ? '↗ Export Mermaid' : '📄 Export JSON'}
+                    {exportFormat === 'mermaid' && 'Export Mermaid'}
+                    {exportFormat === 'json' && 'Export JSON'}
+                    {exportFormat === 'png' && 'Export PNG'}
                   </button>
                   
                   {exportFormat === 'mermaid' && (
@@ -3310,14 +3344,145 @@ function SettingsModal({
                       fontFamily: "'Courier New', monospace",
                     }}>
                       <div style={{ marginBottom: 4, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase" }}>
-                        ℹ️ Mermaid Export
+                        ℹ Mermaid Export
                       </div>
                       <div>Generates a Mermaid diagram showing all subgroup lattices and morphisms as a single graph.</div>
-                      <div style={{ marginTop: 4, color: "#16a34a" }}>
-                        ✓ {lattices.length} lattices · {morphisms.length} morphisms · {lattices.reduce((s, l) => s + (l.base?.nodes?.length || 0), 0)} nodes
-                      </div>
                     </div>
                   )}
+                  {exportFormat === 'png' && (
+                    <div style={{
+                      background: "#F4F6F4",
+                      borderRadius: 6,
+                      padding: "10px 12px",
+                      fontSize: 8,
+                      color: "#3a6278",
+                      lineHeight: 1.6,
+                      fontFamily: "'Courier New', monospace",
+                    }}>
+                      <div style={{ marginBottom: 4, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase" }}>
+                        ℹ PNG Export
+                      </div>
+                      <div>Exports the current visible diagram as a high-resolution PNG.</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* INFO TAB */}
+              {activeTab === 'info' && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  <div>
+                    <h3 style={{ fontSize: 11, letterSpacing: 2, color: "#1e3d54", textTransform: "uppercase", margin: "0 0 8px 0", fontFamily: "'Courier New', monospace" }}>
+                      Keyboard Shortcuts
+                    </h3>
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 10, fontFamily: "'Courier New', monospace", color: "#3a6278", lineHeight: 2 }}>
+                      <li><span style={{ background: "#E8ECEE", padding: "0 6px", borderRadius: 3 }}>Esc</span> Cancel active tools / Deselect</li>
+                      <li><span style={{ background: "#E8ECEE", padding: "0 6px", borderRadius: 3 }}>Scroll</span> Zoom in/out on canvas</li>
+                      <li><span style={{ background: "#E8ECEE", padding: "0 6px", borderRadius: 3 }}>Middle-click + Drag</span> Pan canvas</li>
+                      <li><span style={{ background: "#E8ECEE", padding: "0 6px", borderRadius: 3 }}>Click Node</span> Select subgroup</li>
+                      <li><span style={{ background: "#E8ECEE", padding: "0 6px", borderRadius: 3 }}>Drag Node</span> Move selected node(s)</li>
+                    </ul>
+                  </div>
+                  <hr style={{ borderColor: "#E8ECEE" }} />
+                  <div>
+                    <h3 style={{ fontSize: 11, letterSpacing: 2, color: "#1e3d54", textTransform: "uppercase", margin: "0 0 8px 0", fontFamily: "'Courier New', monospace" }}>
+                      About Psinite
+                    </h3>
+                    <p style={{ fontSize: 10, color: "#3a6278", lineHeight: 1.8, fontFamily: "'Courier New', monospace", margin: 0 }}>
+                      A visual explorer for finite group theory. Build subgroup lattices, define morphisms,
+                      and export diagrams for papers or presentations.
+                    </p>
+                    <p style={{ fontSize: 9, color: "#93b5c8", marginTop: 8 }}>
+                      Version 1.0.0 · Built with React
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* STYLE TAB */}
+              {activeTab === 'style' && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 8 }}>Canvas Grid</div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {[["lines","Lines"],["dots","Dots"],["cross","Cross"],["none","None"]].map(([val, lbl]) => (
+                        <button key={val} onClick={() => setGridSettings(g => ({ ...g, pattern: val }))}
+                          style={{
+                            padding: "5px 12px",
+                            borderRadius: 6,
+                            fontSize: 9,
+                            cursor: "pointer",
+                            letterSpacing: 1,
+                            fontFamily: "'Courier New', monospace",
+                            background: gridSettings.pattern === val ? "#1e3d54" : "transparent",
+                            border: gridSettings.pattern === val ? "none" : "1px solid #DEE7DC",
+                            color: gridSettings.pattern === val ? "#FFFFFF" : "#3a6278",
+                            transition: "all 0.1s",
+                          }}
+                        >
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 6 }}>Size: {gridSettings.size}px</div>
+                    <input
+                      type="range"
+                      min={16}
+                      max={80}
+                      value={gridSettings.size}
+                      onChange={e => setGridSettings(g => ({ ...g, size: parseInt(e.target.value) }))}
+                      style={{ width: "100%", accentColor: "#1e3d54", cursor: "pointer" }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 6 }}>Grid Color</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {["#DEE7DC","#d4d4d8","#c7d2e8","#f3d8c0","#d4e8d4","#e8d4e8","#1e3d54"].map(col => (
+                        <div key={col} onClick={() => setGridSettings(g => ({ ...g, color: col }))}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            cursor: "pointer",
+                            background: col,
+                            border: gridSettings.color === col ? "2.5px solid #1e3d54" : "1.5px solid #DEE7DC",
+                            boxSizing: "border-box",
+                            transition: "border 0.1s",
+                          }}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={gridSettings.color}
+                        onChange={e => setGridSettings(g => ({ ...g, color: e.target.value }))}
+                        style={{ width: 22, height: 22, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0 }}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div style={{ borderTop: "1px solid #E8ECEE", paddingTop: 14 }}>
+                    <div style={{ fontSize: 8, letterSpacing: 2, color: "#3a6278", textTransform: "uppercase", marginBottom: 6 }}>Camera Reset</div>
+                    <button
+                      onClick={() => setCamera({ tx: 0, ty: 0, scale: 1 })}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: 4,
+                        border: "1px solid #DEE7DC",
+                        background: "transparent",
+                        cursor: "pointer",
+                        fontSize: 9,
+                        color: "#3a6278",
+                        letterSpacing: 1,
+                        fontFamily: "'Courier New', monospace",
+                      }}
+                    >
+                      Reset Main View
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

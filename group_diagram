@@ -1,0 +1,81 @@
+digraph GroupDiagram {
+	rankdir=TB splines=ortho
+	node [fontname=monospace fontsize=10 shape=box style=filled]
+	edge [fontname=monospace fontsize=9]
+	subgraph cluster_Q {
+		color="#93b5c8" fontcolor="#0B151E" label=Q42
+		Q0 [label="{e}" color="#ca8a04" fillcolor="#fbbf24" fontcolor="#0B151E" penwidth=2 shape=doublecircle]
+		Q1 [label=<-1> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		Q2 [label=<i> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		Q3 [label=<j> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		Q4 [label=<k> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		Q5 [label=<i,j> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		Q0 -> Q1 [color="#93b5c8" penwidth=2]
+		Q1 -> Q2 [color="#93b5c8" penwidth=2]
+		Q1 -> Q3 [color="#93b5c8" penwidth=2]
+		Q1 -> Q4 [color="#93b5c8" penwidth=2]
+		Q2 -> Q5 [color="#93b5c8" penwidth=2]
+		Q3 -> Q5 [color="#93b5c8" penwidth=2]
+		Q4 -> Q5 [color="#93b5c8" penwidth=2]
+	}
+	subgraph cluster_Tree {
+		color="#93b5c8" fontcolor="#0B151E" label="Z4xZ3 Tree"
+		T0 [label="e×e" color="#ca8a04" fillcolor="#fbbf24" fontcolor="#0B151E" penwidth=2 shape=circle]
+		T1 [label="e×a1" fillcolor="#7c3aed" fontcolor="#ffffff" shape=circle]
+		T2 [label="e×a2" fillcolor="#7c3aed" fontcolor="#ffffff" shape=circle]
+		T3 [label="a1×e" fillcolor="#db2777" fontcolor="#ffffff" shape=circle]
+		T4 [label="a1×a1" fillcolor="#0284c7" fontcolor="#ffffff" shape=circle]
+		T5 [label="a1×a2" fillcolor="#0284c7" fontcolor="#ffffff" shape=circle]
+		T6 [label="a2×e" fillcolor="#0284c7" fontcolor="#ffffff" shape=circle]
+		T7 [label="a2×a1" fillcolor="#ca8a04" fontcolor="#ffffff" shape=circle]
+		T8 [label="a2×a2" fillcolor="#ca8a04" fontcolor="#ffffff" shape=circle]
+		T9 [label="a3×e" fillcolor="#db2777" fontcolor="#ffffff" shape=circle]
+		T10 [label="a3×a1" fillcolor="#0284c7" fontcolor="#ffffff" shape=circle]
+		T11 [label="a3×a2" fillcolor="#0284c7" fontcolor="#ffffff" shape=circle]
+		T9 -> T1 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T10 -> T2 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T2 -> T3 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T0 -> T4 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T1 -> T5 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T5 -> T6 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T3 -> T7 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T4 -> T8 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T8 -> T9 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T6 -> T10 [arrowhead=normal color="#93b5c8" penwidth=1]
+		T7 -> T11 [arrowhead=normal color="#93b5c8" penwidth=1]
+	}
+	subgraph cluster_G {
+		color="#93b5c8" fontcolor="#0B151E" label=Z4xZ3
+		G0 [label="{e}" color="#ca8a04" fillcolor="#fbbf24" fontcolor="#0B151E" penwidth=2 shape=doublecircle]
+		G1 [label=<a2×e> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		G2 [label=<e×a1> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		G3 [label=<a1×e> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		G4 [label=<a2×a1> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		G5 [label=<a1×a1> color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" penwidth=2 shape=box]
+		G0 -> G1 [color="#93b5c8" penwidth=2]
+		G0 -> G2 [color="#93b5c8" penwidth=2]
+		G1 -> G3 [color="#93b5c8" penwidth=2]
+		G1 -> G4 [color="#93b5c8" penwidth=2]
+		G2 -> G4 [color="#93b5c8" penwidth=2]
+		G3 -> G5 [color="#93b5c8" penwidth=2]
+		G4 -> G5 [color="#93b5c8" penwidth=2]
+	}
+	Q2 -> T8 [label=phi1 arrowhead=vee color="#93b5c8" penwidth=1 style=dashed]
+	Q3 -> T9 [label=phi1 arrowhead=vee color="#93b5c8" penwidth=1 style=dashed]
+	Q4 -> T1 [label=phi1 arrowhead=vee color="#93b5c8" penwidth=1 style=dashed]
+	T10 -> G1 [label=phi2 arrowhead=vee color="#93b5c8" penwidth=1 style=dashed]
+	T2 -> G0 [label=phi2 arrowhead=vee color="#93b5c8" penwidth=1 style=dashed]
+	T3 -> G2 [label=phi2 arrowhead=vee color="#93b5c8" penwidth=1 style=dashed]
+	subgraph cluster_legend {
+		color="#93b5c8" fontcolor="#0B151E" label="Shape Key" style=dashed
+		L0 [label=e color="#ca8a04" fillcolor="#fbbf24" fontcolor="#0B151E" shape=doublecircle]
+		L1 [label=Normal color="#16a34a" fillcolor="#4ade80" fontcolor="#0B151E" shape=box]
+		L2 [label=Standard fillcolor="#db2777" fontcolor="#ffffff" shape=circle]
+		L3 [label="Thick edge" fontcolor="#0B151E" shape=plaintext style=solid]
+		L4 [label=Morphism fontcolor="#0B151E" shape=plaintext style=dashed]
+		L0 -> L1 [style=invis]
+		L1 -> L2 [style=invis]
+		L2 -> L3 [style=invis]
+		L3 -> L4 [style=invis]
+	}
+}

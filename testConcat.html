@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Graph Workshop — Psinite</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0B151E;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        #root { max-width: 1200px; margin: 0 auto; }
+        button { font-family: inherit; }
+        button:focus-visible { outline: 1px solid #2589c0; outline-offset: 1px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel">
+        const { useState, useRef, useCallback, useEffect, useMemo } = React;
+
+        // ─── palette ───────────────────────────────────────────────────────────────
+        const C = {
+            bg: "#0B151E",            panel: "#111d27",
+            leftCanvas: "#0d1f2d",    rightCanvas: "#0a1a2e",
+            rightHint: "#0d2340",     resultBg: "#0d1a24",
+            border: "#1e3d54",        borderHi: "#2e5a78",
+            nodeBase: "#152433",      nodeHover: "#1e3d54",
+            nodeStroke: "#4a88aa",    nodeSelL: "#fbbf24",  nodeSelR: "#60a5fa",
+            edgeBase: "#2e5a78",      edgeSel: "#4a88aa",
+            accent: "#1e6fa0",        accentHi: "#2589c0",
+            compose: "#1d4f2a",       composeHi: "#266636", composeText: "#4ade80",
+            text: "#c9dde8",          textMid: "#6a9ab5",   textDim: "#3a6278",
+            warning: "#ca8a04",       ink: "#0B151E",
+        };
+
+        // ─── geometry constants ────────────────────────────────────────────────────
+        const R = 20;
+        const R_RESULT   = R * 0.85;
+        const ID_OFFSET  = 1000;   // id-space separator between left and right
+        const COPY_STRIDE = 100;   // per-copy id increment for duplicates
+        const PLACE_DX   = 340;    // horizontal offset when placing the right graph
+        const RESULT_PAD = 40;
+        const MAX_SCALE  = 2;
+        const CANVAS_W = 300,  CANVAS_H = 240;
+        const RESULT_W = 616,  RESULT_H = 260;
+
+        // ─── preset graphs ─────────────────────────────────────────────────────────
+        const PRESETS = [
+            { label: "ℤ₂ (2 nodes)",   nodes: [{ id: 0, label: "0",  x: 80,  y: 100 }, { id: 1, label: "1",  x: 220, y: 100 }], edges: [[0, 1]] },
+            { label: "ℤ₃ (triangle)",  nodes: [{ id: 0, label: "0",  x: 150, y: 55  }, { id: 1, label: "1",  x: 60,  y: 175 }, { id: 2, label: "2",  x: 240, y: 175 }], edges: [[0, 1], [1, 2], [2, 0]] },
+            { label: "ℤ₄ (square)",    nodes: [{ id: 0, label: "0",  x: 70,  y: 70  }, { id: 1, label: "1",  x: 220, y: 70  }, { id: 2, label: "2",  x: 220, y: 180 }, { id: 3, label: "3",  x: 70,  y: 180 }], edges: [[0, 1], [1, 2], [2, 3], [3, 0]] },
+            { label: "D₄ (4 nodes)",   nodes: [{ id: 0, label: "e",  x: 150, y: 50  }, { id: 1, label: "r",  x: 250, y: 125 }, { id: 2, label: "r²", x: 150, y: 200 }, { id: 3, label: "r³", x: 50,  y: 125 }], edges: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2], [1, 3]] },
+        ];
+
+        // ─── pure helpers ──────────────────────────────────────────────────────────
+        const cloneNodes  = (ns) => ns.map(n => ({ ...n }));
+        const cloneEdges  = (es) => es.map(e => [...e]);
+        const hasEdge     = (es, a, b) => es.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+        const buildNodeMap = (ns) => {
+            const m = new Map();
+            for (const n of ns) m.set(n.id, n);
+            return m;
+        };
+
+        // true iff `selected` ids form a simple path in the `edges` graph
+        // (exactly 2 endpoints, all degrees ≤ 2, subgraph connected)
+        function isPath(selected, edges) {
+            const set = new Set(selected);
+            const adj = new Map();
+            for (const id of selected) adj.set(id, []);
+            for (const [a, b] of edges) {
+                if (set.has(a) && set.has(b)) {
+                    adj.get(a).push(b);
+                    adj.get(b).push(a);
+                }
+            }
+            const degs = [...adj.values()].map(d => d.length);
+            const endpoints = degs.filter(d => d === 1).length;
+            return degs.length > 0 && endpoints === 2 && degs.every(d => d <= 2);
+        }
+
+        // ─── composition ───────────────────────────────────────────────────────────
+        function applyCompose(leftNodes, leftEdges, leftSel, rightNodes, rightEdges, rightSel) {
+            const lSel = [...leftSel], rSel = [...rightSel];
+            const lCount = lSel.length, rCount = rSel.length;
+            if (lCount === 0 || rCount === 0) return null;
+
+            const lMap = buildNodeMap(leftNodes);
+            const rMap = buildNodeMap(rightNodes);
+
+            // 1L · 1R — supplant
+            if (lCount === 1 && rCount === 1) {
+                const lParent = lSel[0], rConn = rSel[0];
+                const lNode = lMap.get(lParent), rConnNode = rMap.get(rConn);
+                const dx = lNode.x - rConnNode.x + PLACE_DX;
+                const dy = lNode.y - rConnNode.y;
+
+                const nodes = [
+                    ...leftNodes.map(n => ({ ...n, resultX: n.x, resultY: n.y, isMerge: n.id === lParent })),
+                    ...rightNodes.filter(n => n.id !== rConn).map(n => ({
+                        ...n, id: n.id + ID_OFFSET, resultX: n.x + dx, resultY: n.y + dy, isMerge: false,
+                    })),
+                ];
+                const edges = [
+                    ...leftEdges,
+                    ...rightEdges.map(([a, b]) => [
+                        a === rConn ? lParent : a + ID_OFFSET,
+                        b === rConn ? lParent : b + ID_OFFSET,
+                    ]),
+                ];
+                return { nodes, edges, mode: "1L · 1R — supplant" };
+            }
+
+            // NL · 1R — duplicate per left parent
+            if (lCount > 1 && rCount === 1) {
+                const rConn = rSel[0], rConnNode = rMap.get(rConn);
+                const nodes = leftNodes.map(n => ({ ...n, resultX: n.x, resultY: n.y }));
+                const edges = [...leftEdges];
+
+                lSel.forEach((lParent, ci) => {
+                    const lNode = lMap.get(lParent);
+                    const dx = lNode.x - rConnNode.x + PLACE_DX;
+                    const dy = lNode.y - rConnNode.y;
+                    const off = ID_OFFSET + ci * COPY_STRIDE;
+
+                    for (const n of rightNodes) {
+                        if (n.id === rConn) continue;
+                        nodes.push({ ...n, id: n.id + off, resultX: n.x + dx, resultY: n.y + dy });
+                    }
+                    for (const [a, b] of rightEdges) {
+                        edges.push([
+                            a === rConn ? lParent : a + off,
+                            b === rConn ? lParent : b + off,
+                        ]);
+                    }
+                });
+                return { nodes, edges, mode: `${lCount}L · 1R — duplicate × ${lCount}` };
+            }
+
+            // 1L · NR — spine if the right selection is path-shaped, otherwise collapse
+            if (lCount === 1 && rCount > 1) {
+                const lParent = lSel[0], lNode = lMap.get(lParent);
+                const rSelSet = new Set(rSel);
+
+                if (isPath(rSel, rightEdges)) {
+                    const first = rMap.get(rSel[0]);
+                    const dx = lNode.x - first.x + PLACE_DX;
+                    const dy = lNode.y - first.y;
+
+                    const nodes = [
+                        ...leftNodes.map(n => ({ ...n, resultX: n.x, resultY: n.y })),
+                        ...rightNodes.filter(n => !rSelSet.has(n.id)).map(n => ({
+                            ...n, id: n.id + ID_OFFSET, resultX: n.x + dx, resultY: n.y + dy,
+                        })),
+                        ...rSel.slice(1).map(id => {
+                            const rn = rMap.get(id);
+                            return { ...rn, id: rn.id + ID_OFFSET, resultX: rn.x + dx, resultY: rn.y + dy };
+                        }),
+                    ];
+                    const remap = (id) => (id === rSel[0] ? lParent : id + ID_OFFSET);
+                    const edges = [
+                        ...leftEdges,
+                        ...rightEdges.map(([a, b]) => [remap(a), remap(b)]),
+                        ...rSel.slice(0, -1).map((_, i) => [remap(rSel[i]), remap(rSel[i + 1])]),
+                    ];
+                    return { nodes, edges, mode: "1L · NR — spine" };
+                }
+
+                // collapse: fold every selected right node into lParent
+                const dx = lNode.x + PLACE_DX - rightNodes[0].x;
+                const dy = lNode.y - rightNodes[0].y;
+                const nodes = [
+                    ...leftNodes.map(n => ({ ...n, resultX: n.x, resultY: n.y })),
+                    ...rightNodes.filter(n => !rSelSet.has(n.id)).map(n => ({
+                        ...n, id: n.id + ID_OFFSET, resultX: n.x + dx, resultY: n.y + dy,
+                    })),
+                ];
+                const remap = (id) => (rSelSet.has(id) ? lParent : id + ID_OFFSET);
+                const edges = [
+                    ...leftEdges,
+                    ...rightEdges.map(([a, b]) => [remap(a), remap(b)]).filter(([a, b]) => a !== b),
+                ];
+                return { nodes, edges, mode: "1L · NR — collapse" };
+            }
+
+            // NL · NR — multi-split (one copy of the right graph per left parent)
+            if (lCount > 1 && rCount > 1) {
+                const rSelSet = new Set(rSel);
+                const nodes = leftNodes.map(n => ({ ...n, resultX: n.x, resultY: n.y }));
+                const edges = [...leftEdges];
+
+                lSel.forEach((lParent, ci) => {
+                    const lNode = lMap.get(lParent);
+                    const firstR = rMap.get(rSel[0]);
+                    const dx = lNode.x - firstR.x + PLACE_DX;
+                    const dy = lNode.y - firstR.y;
+                    const off = ID_OFFSET + ci * COPY_STRIDE;
+
+                    for (const n of rightNodes) {
+                        if (rSelSet.has(n.id)) continue;
+                        nodes.push({ ...n, id: n.id + off, resultX: n.x + dx, resultY: n.y + dy });
+                    }
+                    for (const [a, b] of rightEdges) {
+                        edges.push([
+                            rSelSet.has(a) ? lParent : a + off,
+                            rSelSet.has(b) ? lParent : b + off,
+                        ]);
+                    }
+                });
+                return { nodes, edges, mode: `${lCount}L · ${rCount}R — multi-split` };
+            }
+
+            return null;
+        }
+
+        // ─── small reusable button ────────────────────────────────────────────────
+        function PillButton({ active = false, onClick, children, style }) {
+            return (
+                <button
+                    onClick={onClick}
+                    style={{
+                        background: active ? C.accent : "transparent",
+                        border: "1px solid " + (active ? C.accentHi : C.border),
+                        borderRadius: 4,
+                        color: active ? "#fff" : C.textMid,
+                        fontSize: 9, padding: "3px 8px",
+                        cursor: "pointer", letterSpacing: 0.5,
+                        fontFamily: "'Courier New', monospace",
+                        ...style,
+                    }}
+                >{children}</button>
+            );
+        }
+
+        // ─── graph canvas (left/right are both this same component) ───────────────
+        function GraphCanvas({
+            nodes, edges, selected, onSelect,
+            onAddNode, onAddEdge,
+            bgColor, selColor, isRight, label,
+            pendingEdge, setPendingEdge,
+        }) {
+            const svgRef = useRef(null);
+            const [hovered,  setHovered]  = useState(null);
+            const [mousePos, setMousePos] = useState(null);
+
+            const nodeMap = useMemo(() => buildNodeMap(nodes), [nodes]);
+
+            const svgPt = useCallback((e) => {
+                const rect = svgRef.current.getBoundingClientRect();
+                return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            }, []);
+
+            const handleCanvasClick = useCallback((e) => {
+                if (e.target !== svgRef.current) return;
+                const p = svgPt(e);
+                if (isRight && onAddNode) { onAddNode(p.x, p.y); return; }
+                if (pendingEdge !== null) { setPendingEdge(null); return; }
+                onSelect(null);
+            }, [isRight, onAddNode, onSelect, pendingEdge, setPendingEdge, svgPt]);
+
+            const handleNodeClick = useCallback((id, e) => {
+                e.stopPropagation();
+                if (pendingEdge !== null) {
+                    if (pendingEdge !== id) onAddEdge(pendingEdge, id);
+                    setPendingEdge(null);
+                    return;
+                }
+                onSelect(id);
+            }, [pendingEdge, onAddEdge, setPendingEdge, onSelect]);
+
+            const handleNodeRightClick = useCallback((id, e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isRight) setPendingEdge(id);
+            }, [isRight, setPendingEdge]);
+
+            // esc cancels an in-flight edge (the previously-imported useEffect now has a job)
+            useEffect(() => {
+                if (!isRight || pendingEdge === null) return;
+                const onKey = (e) => { if (e.key === "Escape") setPendingEdge(null); };
+                window.addEventListener("keydown", onKey);
+                return () => window.removeEventListener("keydown", onKey);
+            }, [isRight, pendingEdge, setPendingEdge]);
+
+            return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{
+                        fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase",
+                        color: C.textMid, fontFamily: "'Courier New', monospace",
+                    }}>{label}</div>
+                    <svg
+                        ref={svgRef}
+                        width={CANVAS_W} height={CANVAS_H}
+                        style={{
+                            background: bgColor,
+                            border: "1px solid " + C.border,
+                            borderRadius: 8,
+                            cursor: isRight && pendingEdge === null ? "crosshair" : "default",
+                            display: "block",
+                        }}
+                        onClick={handleCanvasClick}
+                        onMouseMove={(e) => setMousePos(svgPt(e))}
+                        onMouseLeave={() => setMousePos(null)}
+                    >
+                        {isRight && nodes.length === 0 && (
+                            <text x={CANVAS_W / 2} y={CANVAS_H / 2} textAnchor="middle"
+                                fill={C.textDim} fontSize={11} fontFamily="'Courier New', monospace">
+                                click to place nodes
+                            </text>
+                        )}
+                        {isRight && nodes.length > 0 && (
+                            <text x={CANVAS_W - 8} y={CANVAS_H - 8} textAnchor="end"
+                                fill={C.textDim} fontSize={9} fontFamily="'Courier New', monospace">
+                                right-click node → edge · esc → cancel
+                            </text>
+                        )}
+
+                        {edges.map(([a, b], i) => {
+                            const na = nodeMap.get(a), nb = nodeMap.get(b);
+                            if (!na || !nb) return null;
+                            return (
+                                <line key={i}
+                                    x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
+                                    stroke={C.edgeBase} strokeWidth={1.5} strokeLinecap="round" />
+                            );
+                        })}
+
+                        {pendingEdge !== null && mousePos && (() => {
+                            const src = nodeMap.get(pendingEdge);
+                            if (!src) return null;
+                            return (
+                                <line
+                                    x1={src.x} y1={src.y} x2={mousePos.x} y2={mousePos.y}
+                                    stroke={C.accentHi} strokeWidth={1}
+                                    strokeDasharray="4 3" strokeLinecap="round" />
+                            );
+                        })()}
+
+                        {nodes.map((n) => {
+                            const isSel = selected.has(n.id);
+                            const isHov = hovered === n.id;
+                            return (
+                                <g key={n.id} style={{ cursor: "pointer" }}
+                                    onClick={(e) => handleNodeClick(n.id, e)}
+                                    onContextMenu={(e) => handleNodeRightClick(n.id, e)}
+                                    onMouseEnter={() => setHovered(n.id)}
+                                    onMouseLeave={() => setHovered(null)}>
+                                    <circle cx={n.x} cy={n.y} r={R}
+                                        fill={isSel ? selColor : (isHov ? C.nodeHover : C.nodeBase)}
+                                        stroke={isSel ? selColor : (isHov ? C.nodeStroke : C.border)}
+                                        strokeWidth={isSel ? 2 : 1.5}
+                                        style={{ transition: "fill 0.12s, stroke 0.12s" }} />
+                                    <text x={n.x} y={n.y} textAnchor="middle" dominantBaseline="central"
+                                        fill={isSel ? C.ink : C.text}
+                                        fontSize={isSel ? 11 : 10}
+                                        fontWeight={isSel ? 600 : 400}
+                                        fontFamily="'Courier New', monospace"
+                                        style={{ pointerEvents: "none", userSelect: "none" }}>
+                                        {n.label}
+                                    </text>
+                                </g>
+                            );
+                        })}
+                    </svg>
+                </div>
+            );
+        }
+
+        // ─── result canvas (read-only, auto-fit) ───────────────────────────────────
+        function ResultCanvas({ nodes, edges }) {
+            const transform = useMemo(() => {
+                if (!nodes || nodes.length === 0) return null;
+                const xs = nodes.map(n => n.resultX);
+                const ys = nodes.map(n => n.resultY);
+                const minX = Math.min(...xs), maxX = Math.max(...xs);
+                const minY = Math.min(...ys), maxY = Math.max(...ys);
+                const dx = maxX - minX, dy = maxY - minY;
+                const scX = dx < 1 ? 1 : (RESULT_W - RESULT_PAD * 2) / dx;
+                const scY = dy < 1 ? 1 : (RESULT_H - RESULT_PAD * 2) / dy;
+                const sc = Math.min(scX, scY, MAX_SCALE);
+                const ox = RESULT_PAD + ((RESULT_W - RESULT_PAD * 2) - dx * sc) / 2;
+                const oy = RESULT_PAD + ((RESULT_H - RESULT_PAD * 2) - dy * sc) / 2;
+                return { minX, minY, sc, ox, oy };
+            }, [nodes]);
+
+            const nodeMap = useMemo(() => buildNodeMap(nodes), [nodes]);
+            if (!transform) return null;
+            const { minX, minY, sc, ox, oy } = transform;
+            const tx = (x) => ox + (x - minX) * sc;
+            const ty = (y) => oy + (y - minY) * sc;
+
+            return (
+                <svg width={RESULT_W} height={RESULT_H} style={{
+                    background: C.resultBg, border: "1px solid " + C.border,
+                    borderRadius: 8, display: "block",
+                }}>
+                    {edges.map(([a, b], i) => {
+                        const na = nodeMap.get(a), nb = nodeMap.get(b);
+                        if (!na || !nb) return null;
+                        return (
+                            <line key={i}
+                                x1={tx(na.resultX)} y1={ty(na.resultY)}
+                                x2={tx(nb.resultX)} y2={ty(nb.resultY)}
+                                stroke={C.edgeBase} strokeWidth={1.5} strokeLinecap="round" />
+                        );
+                    })}
+                    {nodes.map((n) => (
+                        <g key={n.id}>
+                            <circle cx={tx(n.resultX)} cy={ty(n.resultY)} r={R_RESULT}
+                                fill={n.isMerge ? C.compose : C.nodeBase}
+                                stroke={n.isMerge ? C.composeText : C.border}
+                                strokeWidth={1.5} />
+                            <text x={tx(n.resultX)} y={ty(n.resultY)} textAnchor="middle" dominantBaseline="central"
+                                fill={n.isMerge ? C.composeText : C.text}
+                                fontSize={9} fontFamily="'Courier New', monospace"
+                                style={{ pointerEvents: "none", userSelect: "none" }}>
+                                {n.label}
+                            </text>
+                        </g>
+                    ))}
+                </svg>
+            );
+        }
+
+        // ─── mode badge ────────────────────────────────────────────────────────────
+        function ModeBadge({ leftSel, rightSel, rightEdges }) {
+            const l = leftSel.size, r = rightSel.size;
+            const dim  = { color: C.textDim, fontSize: 10, fontFamily: "'Courier New', monospace" };
+            const warn = { ...dim, color: C.warning };
+
+            if (l === 0 && r === 0) return <span style={dim}>select nodes on both canvases</span>;
+            if (l === 0)            return <span style={warn}>← select left nodes</span>;
+            if (r === 0)            return <span style={warn}>select right nodes →</span>;
+
+            let mode;
+            if (l === 1 && r === 1) mode = "supplant";
+            else if (l > 1 && r === 1) mode = `duplicate × ${l}`;
+            else if (l === 1 && r > 1) mode = isPath(rightSel, rightEdges) ? "spine" : "collapse";
+            else mode = `multi-split (${l}×${r})`;
+
+            return (
+                <span style={{
+                    background: C.compose, color: C.composeText,
+                    fontSize: 10, padding: "2px 8px", borderRadius: 4,
+                    fontFamily: "'Courier New', monospace", letterSpacing: 0.5,
+                }}>{mode}</span>
+            );
+        }
+
+        // ─── main workshop ─────────────────────────────────────────────────────────
+        function Workshop() {
+            const [leftPreset, setLeftPreset] = useState(0);
+            const [leftNodes,  setLeftNodes]  = useState(() => cloneNodes(PRESETS[0].nodes));
+            const [leftEdges,  setLeftEdges]  = useState(() => cloneEdges(PRESETS[0].edges));
+            const [leftSel,    setLeftSel]*_

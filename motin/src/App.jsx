@@ -32,7 +32,6 @@ function serializeCanvasState(state) {
       _collapsedRepId: l._collapsedRepId,
       hasseLayout: l.hasseLayout,
       viewType: l.viewType || l.base?.viewType || "hasse",
-      // ✅ Store the full base (nodes, edges, layout, table, labels)
       base: l.base,
     })),
     morphisms: state.morphisms,
@@ -47,7 +46,6 @@ function serializeCanvasState(state) {
 function deserializeCanvasState(data) {
   const lattices = data.lattices.map(savedLattice => ({
     ...savedLattice,
-    // ✅ Use the stored base directly instead of rebuilding from catalog
     base: savedLattice.base || { nodes: [], edges: [], W: 400, H: 400 },
     nodePositions: savedLattice.nodePositions || {},
     epicenter: savedLattice.epicenter || { x: 400, y: 300 },
@@ -72,7 +70,6 @@ function tableFromCyclic(n) {
   const table = Array.from({ length: n }, (_, i) =>
     Array.from({ length: n }, (_, j) => (i + j) % n)
   );
-  // Labels as [a]₀, [a]₁ ... but identity stays "e", exponent-style
   const SUB = "₀₁₂₃₄₅₆₇₈₉";
   const sub = x => String(x).split("").map(d => SUB[parseInt(d)] ?? d).join("");
   const labels = Array.from({ length: n }, (_, i) => i === 0 ? "e" : `a${sub(i)}`);
@@ -80,8 +77,6 @@ function tableFromCyclic(n) {
 }
 
 function tableFromDihedral(n) {
-  // Elements: r^0..r^(n-1), s·r^0..s·r^(n-1)  — index = rotation + flip*n
-  // Product: (r^a · s^p)(r^b · s^q) = r^(a + (-1)^p · b) · s^(p+q)
   const order = 2 * n;
   const table = Array.from({ length: order }, (_, i) => {
     const [a, p] = [i % n, i < n ? 0 : 1];
@@ -102,7 +97,6 @@ function tableFromDihedral(n) {
 }
 
 function tableFromSymmetric(n) {
-  // Build all permutations of [0..n-1], compose left-to-right: (f∘g)(x) = f(g(x))
   function permutations(arr) {
     if (arr.length <= 1) return [arr];
     return arr.flatMap((v, i) =>
@@ -110,10 +104,8 @@ function tableFromSymmetric(n) {
     );
   }
   const perms = permutations(Array.from({ length: n }, (_, i) => i));
-  // put identity first
   const idIdx = perms.findIndex(p => p.every((v, i) => v === i));
   if (idIdx > 0) { const tmp = perms[0]; perms[0] = perms[idIdx]; perms[idIdx] = tmp; }
-  // build lookup AFTER swap so identity is correctly at index 0
   const key = p => p.join(",");
   const lookup = new Map(perms.map((p, i) => [key(p), i]));
   const order = perms.length;
@@ -139,20 +131,15 @@ function tableFromSymmetric(n) {
 }
 
 function tableFromQuaternion() {
-  // Q8 = {1,-1,i,-i,j,-j,k,-k} indices 0..7
-  // Multiplication rules: i²=j²=k²=-1, ij=k, jk=i, ki=j, ji=-k, kj=-i, ik=-j
-  // Row a, Col b => a*b
-  // 0=1,1=-1,2=i,3=-i,4=j,5=-j,6=k,7=-k
   const table = [
-    //  1   -1    i   -i    j   -j    k   -k
-    [0,  1,  2,  3,  4,  5,  6,  7], // 1*x = x
-    [1,  0,  3,  2,  5,  4,  7,  6], // -1*x
-    [2,  3,  1,  0,  6,  7,  5,  4], // i*x:  i*1=i, i*-1=-i, i*i=-1, i*-i=1, i*j=k, i*-j=-k, i*k=-j, i*-k=j
-    [3,  2,  0,  1,  7,  6,  4,  5], // -i*x
-    [4,  5,  7,  6,  1,  0,  2,  3], // j*x:  j*1=j, j*-1=-j, j*i=-k, j*-i=k, j*j=-1, j*-j=1, j*k=i, j*-k=-i
-    [5,  4,  6,  7,  0,  1,  3,  2], // -j*x
-    [6,  7,  4,  5,  3,  2,  1,  0], // k*x:  k*1=k, k*-1=-k, k*i=j, k*-i=-j, k*j=-i, k*-j=i, k*k=-1, k*-k=1
-    [7,  6,  5,  4,  2,  3,  0,  1], // -k*x
+    [0,  1,  2,  3,  4,  5,  6,  7],
+    [1,  0,  3,  2,  5,  4,  7,  6],
+    [2,  3,  1,  0,  6,  7,  5,  4],
+    [3,  2,  0,  1,  7,  6,  4,  5],
+    [4,  5,  7,  6,  1,  0,  2,  3],
+    [5,  4,  6,  7,  0,  1,  3,  2],
+    [6,  7,  4,  5,  3,  2,  1,  0],
+    [7,  6,  5,  4,  2,  3,  0,  1],
   ];
   return { table, labels: ["1","-1","i","-i","j","-j","k","-k"] };
 }
@@ -175,11 +162,9 @@ function tableFromDirectProduct(g1, g2) {
   return { table, labels };
 }
 
-// U(n): multiplicative group mod n (elements coprime to n)
 function tableFromUn(n) {
   function gcd(a, b) { while (b) { [a, b] = [b, a % b]; } return a; }
   const elems = Array.from({ length: n }, (_, i) => i + 1).filter(a => gcd(a, n) === 1);
-  // Put identity (1) first
   const idIdx = elems.indexOf(1);
   if (idIdx > 0) { const tmp = elems[0]; elems[0] = elems[idIdx]; elems[idIdx] = tmp; }
   const lookup = new Map(elems.map((v, i) => [v, i]));
@@ -190,7 +175,6 @@ function tableFromUn(n) {
   return { table, labels: elems.map(String), elems };
 }
 
-// ── Single free element — one node, no edges, for annotation/placeholder use ──
 function buildSingleElement(label = "a") {
   const lbl = label || "a";
   const W = 200, H = 200;
@@ -208,7 +192,6 @@ function buildSingleElement(label = "a") {
   return { nodes: [node], edges: [], maxLevel: 0, byLevel: { 0: [0] }, W, H, nodeR: 26, kind: "Single", param: 1, table, labels: [lbl], viewType: "elements" };
 }
 
-// Parse a raw Cayley table (array of arrays of indices) with optional labels
 function tableFromRaw(rawTable, rawLabels) {
   const n = rawTable.length;
   const labels = rawLabels ?? Array.from({ length: n }, (_, i) => i === 0 ? "e" : String(i));
@@ -217,10 +200,8 @@ function tableFromRaw(rawTable, rawLabels) {
 
 // ═══════════════════════════════════════════════════════════════════════
 //  LATTICE ENGINE
-//  All subgroup/normality/Hasse logic operates on table indices.
 // ═══════════════════════════════════════════════════════════════════════
 
-// Precompute inverse table: inv[i] = j where table[i][j] === 0 (identity)
 function computeInverses(table) {
   const n = table.length;
   const inv = new Array(n);
@@ -230,9 +211,8 @@ function computeInverses(table) {
   return inv;
 }
 
-// BFS closure: given seed indices, close under table multiplication
 function getClosure(seeds, table) {
-  const closure = new Set([0, ...seeds]); // 0 = identity
+  const closure = new Set([0, ...seeds]);
   const queue = [...closure];
   while (queue.length) {
     const a = queue.shift();
@@ -246,45 +226,30 @@ function getClosure(seeds, table) {
   return closure;
 }
 
-// Fingerprint a subgroup as a sorted comma-joined string for dedup
 function sgKey(sg) { return [...sg].sort((a, b) => a - b).join(","); }
 
-// Find all subgroups via generator closure + dedup
 function findAllSubgroups(table) {
   const n = table.length;
-  const seen = new Map(); // key → Set
-
+  const seen = new Map();
   const add = sg => {
     const k = sgKey(sg);
     if (!seen.has(k)) seen.set(k, sg);
   };
-
-  // Trivial and full group
   add(new Set([0]));
   add(new Set(Array.from({ length: n }, (_, i) => i)));
-
-  // Single-element closures
   for (let i = 1; i < n; i++) add(getClosure([i], table));
-
-  // Two-element closures
   for (let i = 1; i < n; i++)
     for (let j = i + 1; j < n; j++)
       add(getClosure([i, j], table));
-
-  // Three-element closures (needed for groups like S4 where rank-3 subgroups exist)
-  // Only run if needed — gate on order to keep S3/D6 fast
   if (n > 12) {
     for (let i = 1; i < n; i++)
       for (let j = i + 1; j < n; j++)
         for (let k = j + 1; k < n; k++)
           add(getClosure([i, j, k], table));
   }
-
-  // Sort by size
   return [...seen.values()].sort((a, b) => a.size - b.size);
 }
 
-// Check if sg is a normal subgroup: gHg⁻¹ ⊆ H for all g
 function isNormal(sg, table, inv) {
   const n = table.length;
   for (let g = 0; g < n; g++) {
@@ -296,20 +261,15 @@ function isNormal(sg, table, inv) {
   return true;
 }
 
-// Hasse cover: transitive reduction of containment on subgroups (sorted by size asc)
 function buildHasseCover(subgroups) {
   const n = subgroups.length;
   const edges = [];
-
-  // For each pair (i < j) where sgs[i] ⊂ sgs[j], check there's no k between them
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       if (subgroups[i].size >= subgroups[j].size) continue;
-      // Check subset
       let sub = true;
       for (const v of subgroups[i]) { if (!subgroups[j].has(v)) { sub = false; break; } }
       if (!sub) continue;
-      // Check no intermediate k
       let covered = false;
       for (let k = i + 1; k < j; k++) {
         if (subgroups[k].size <= subgroups[i].size || subgroups[k].size >= subgroups[j].size) continue;
@@ -325,16 +285,13 @@ function buildHasseCover(subgroups) {
   return edges;
 }
 
-// Find generators of a subgroup (min generating set)
 function findSubgroupGenerators(sg, table) {
   const elems = [...sg].filter(e => e !== 0).sort((a, b) => a - b);
   if (elems.length === 0) return [];
-  // Try single generators
   for (const a of elems) {
     const cl = getClosure([a], table);
     if (cl.size === sg.size && [...cl].every(v => sg.has(v))) return [[a]];
   }
-  // Try pairs
   const pairs = [];
   for (let i = 0; i < elems.length; i++)
     for (let j = i + 1; j < elems.length; j++) {
@@ -343,7 +300,6 @@ function findSubgroupGenerators(sg, table) {
         pairs.push([elems[i], elems[j]]);
     }
   if (pairs.length) return pairs;
-  // Try triples
   const triples = [];
   for (let i = 0; i < elems.length; i++)
     for (let j = i + 1; j < elems.length; j++)
@@ -355,7 +311,6 @@ function findSubgroupGenerators(sg, table) {
   return triples.length ? triples : [[...sg].filter(e => e !== 0)];
 }
 
-// ── Convert a { table, labels } group to the layout-ready node/edge format ──
 function buildLatticeFromTable({ table, labels }, kind, param) {
   const inv = computeInverses(table);
   const subgroups = findAllSubgroups(table);
@@ -367,18 +322,15 @@ function buildLatticeFromTable({ table, labels }, kind, param) {
     const rank = gens.length > 0 ? gens[0].length : 0;
     const shape = rank <= 1 ? "circle" : rank === 2 ? "square" : "triangle";
     const multiGen = gens.length > 1;
-    // Generator notation: ⟨a⟩ for the Hasse/subgroup view
     const genStrs = gens.map(t => "⟨" + t.map(idx => labels[idx]).join(", ") + "⟩");
     const genAll = genStrs.length === 0 ? "∅"
       : genStrs.length === 1 ? genStrs[0]
       : genStrs.slice(0, -1).join(", ") + " or " + genStrs[genStrs.length - 1];
-    // shortLabel uses generator bracket notation ⟨·⟩ — this is the subgroup generated by
     const shortLabel = sg.size === 1 ? "{e}"
       : gens.length > 0 ? "⟨" + gens[0].map(idx => labels[idx]).join(", ") + "⟩"
       : "?";
     const elemArr = [...sg].sort((a, b) => a - b);
     const normal = isNormal(sg, table, inv);
-    // Set notation {a, b, c} for the full element-set label
     return {
       label: "{" + elemArr.map(idx => labels[idx]).join(", ") + "}",
       shortLabel,
@@ -402,12 +354,10 @@ function buildLatticeFromTable({ table, labels }, kind, param) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  MORPHISM ENGINE — table-driven, works for any two groups
+//  MORPHISM ENGINE
 // ═══════════════════════════════════════════════════════════════════════
 
 function checkHomomorphism(phi, tableG, tableH) {
-  // phi: Map<labelG, labelH> — we need element-index maps
-  // Returns { isHomo: bool, witness: [a,b] | null }
   for (const [aLbl, faLbl] of phi) {
     for (const [bLbl, fbLbl] of phi) {
       const a = phi._idxG?.get(aLbl);
@@ -416,7 +366,7 @@ function checkHomomorphism(phi, tableG, tableH) {
       const fb = phi._idxH?.get(fbLbl);
       if (a == null || b == null || fa == null || fb == null) continue;
       const ab = tableG[a][b];
-      const fabLbl = [...phi][ab]?.[1]; // label of phi(a*b)
+      const fabLbl = [...phi][ab]?.[1];
       const fafb = tableH[fa][fb];
       if (fabLbl == null) continue;
       const fabIdx = phi._idxH?.get(fabLbl);
@@ -425,10 +375,6 @@ function checkHomomorphism(phi, tableG, tableH) {
   }
   return { isHomo: true, witness: null };
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-//  U(n) HELPERS  (kept for right-panel isomorphism display only)
-// ═══════════════════════════════════════════════════════════════════════
 
 function gcd(a, b) { while (b) { [a, b] = [b, a % b]; } return a; }
 function setsEqual(a, b) { if (a.size !== b.size) return false; for (const v of a) if (!b.has(v)) return false; return true; }
@@ -460,7 +406,7 @@ function groupExponent(elems, n) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  LAYOUT ENGINE  (unchanged from original)
+//  LAYOUT ENGINE
 // ═══════════════════════════════════════════════════════════════════════
 
 function layoutLattice(rawNodes, coverEdges) {
@@ -508,18 +454,11 @@ function layoutLattice(rawNodes, coverEdges) {
 
 // ═══════════════════════════════════════════════════════════════════════
 //  ALTERNATIVE VIEW BUILDERS
-//  All return the same { nodes, edges, W, H, maxLevel, byLevel, nodeR,
-//  kind, param, table, labels } shape as buildLatticeFromTable.
-//  "element" views: one node per group element, structured layout.
-//  "cayley" views: directed graph of generator actions.
 // ═══════════════════════════════════════════════════════════════════════
 
-// Shared: make a minimal node descriptor for an element view
-// (not a subgroup — each node IS one element, shown in coset/element notation [a])
 function mkElemNode(label, orderOfElem, idx) {
   return {
     label,
-    // Element notation: [a] denotes the element/coset, distinct from ⟨a⟩ (subgroup generated)
     shortLabel: `[${label}]`,
     order: orderOfElem,
     index: 1,
@@ -533,14 +472,12 @@ function mkElemNode(label, orderOfElem, idx) {
   };
 }
 
-// Compute the order of element at index i in the table
 function elementOrder(i, table) {
   let cur = i, o = 1;
   while (cur !== 0) { cur = table[cur][i]; o++; if (o > table.length + 1) return -1; }
   return o;
 }
 
-// Place n nodes evenly around a circle of given radius, centered at (cx,cy)
 function ringPositions(n, radius, cx, cy, offsetAngle = -Math.PI / 2) {
   return Array.from({ length: n }, (_, i) => {
     const a = offsetAngle + (2 * Math.PI * i) / n;
@@ -548,7 +485,6 @@ function ringPositions(n, radius, cx, cy, offsetAngle = -Math.PI / 2) {
   });
 }
 
-// ── Element ring for ℤₙ: n nodes in a circle, edges = generator action ──
 function elementRingCyclic(n) {
   const { table, labels } = tableFromCyclic(n);
   const R = Math.max(100, n * 18);
@@ -559,12 +495,10 @@ function elementRingCyclic(n) {
     ...mkElemNode(lbl, elementOrder(i, table), i),
     id: i, level: 0, x: pos[i].x, y: pos[i].y,
   }));
-  // Edges: each element → next (generator r adds 1)
   const edges = Array.from({ length: n }, (_, i) => [i, (i + 1) % n]);
   return { nodes, edges, maxLevel: 0, byLevel: { 0: nodes.map((_, i) => i) }, W, H, nodeR: 26, kind: "Zn", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Element layout for Dₙ: inner rotation ring + outer reflection ring ──
 function elementRingDihedral(n) {
   const { table, labels } = tableFromDihedral(n);
   const order = 2 * n;
@@ -582,21 +516,16 @@ function elementRingDihedral(n) {
       id: i, level: isFlip ? 1 : 0, x: pos.x, y: pos.y,
     };
   });
-  // Rotation edges (inner ring cycle)
   const edges = [];
   for (let i = 0; i < n; i++) edges.push([i, (i + 1) % n]);
-  // Reflection edges: each reflection → next reflection
   for (let i = 0; i < n; i++) edges.push([n + i, n + ((i + 1) % n)]);
-  // Spokes: r^i ↔ s·r^i
   for (let i = 0; i < n; i++) edges.push([i, n + i]);
   return { nodes, edges, maxLevel: 1, byLevel: { 0: Array.from({ length: n }, (_, i) => i), 1: Array.from({ length: n }, (_, i) => n + i) }, W, H, nodeR: 26, kind: "Dihedral", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Element layout for Sₙ: grid by (cycle_type_length, position) ──
 function elementGridSymmetric(n) {
   const { table, labels } = tableFromSymmetric(n);
   const order = table.length;
-  // Group elements by their order
   const byOrder = {};
   for (let i = 0; i < order; i++) {
     const o = elementOrder(i, table);
@@ -621,7 +550,6 @@ function elementGridSymmetric(n) {
   return { nodes, edges: [], maxLevel: orderKeys.length - 1, byLevel, W, H, nodeR: 26, kind: "Symmetric", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Element layout for U(n): ring ordered by element value ──
 function elementRingUn(n) {
   const g = tableFromUn(n);
   const { table, labels } = g;
@@ -637,7 +565,6 @@ function elementRingUn(n) {
   return { nodes, edges: [], maxLevel: 0, byLevel: { 0: nodes.map((_, i) => i) }, W, H, nodeR: 26, kind: "Un", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Element layout for Q₈: symmetric octagon ──
 function elementRingQ8() {
   const { table, labels } = tableFromQuaternion();
   const R = 110;
@@ -648,12 +575,10 @@ function elementRingQ8() {
     ...mkElemNode(lbl, elementOrder(i, table), i),
     id: i, level: 0, x: pos[i].x, y: pos[i].y,
   }));
-  // Edges between {1,-1} (opposite), i↔-i, j↔-j, k↔-k
   const edges = [[0,1],[2,3],[4,5],[6,7]];
   return { nodes, edges, maxLevel: 0, byLevel: { 0: [0,1,2,3,4,5,6,7] }, W, H, nodeR: 26, kind: "Q8", param: 8, table, labels, viewType: "elements" };
 }
 
-// ── Element layout for ℤₙ×ℤₘ: n×m grid ──
 function elementGridZnZm(n, m) {
   const { table, labels } = tableFromDirectProduct(tableFromCyclic(n), tableFromCyclic(m));
   const order = n * m;
@@ -673,8 +598,6 @@ function elementGridZnZm(n, m) {
   return { nodes, edges: [], maxLevel: n - 1, byLevel, W, H, nodeR: 26, kind: "ZnxZm", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Cayley graph: directed edges for each generator, colored ──
-// Returns same shape but edges carry { from, to, genIdx } (color in render)
 function cayleyGraph(tableData, kind, param, genIndices) {
   const { table, labels } = tableData;
   const order = table.length;
@@ -686,7 +609,6 @@ function cayleyGraph(tableData, kind, param, genIndices) {
     ...mkElemNode(lbl, elementOrder(i, table), i),
     id: i, level: 0, x: pos[i].x, y: pos[i].y,
   }));
-  // One directed edge per element per generator: i → table[i][g]
   const edges = [];
   for (const g of genIndices) {
     for (let i = 0; i < order; i++) {
@@ -697,14 +619,6 @@ function cayleyGraph(tableData, kind, param, genIndices) {
   return { nodes, edges, maxLevel: 0, byLevel: { 0: nodes.map((_, i) => i) }, W, H, nodeR: 26, kind, param, table, labels, viewType: "cayley" };
 }
 
-// ── Generalized quaternion group Q_{4n} ────────────────────────────────
-// Presentation: <x, y | x^(2n)=e, y^2=x^n, yxy^{-1}=x^{-1}>
-// Elements: x^0..x^(2n-1), y, x^1y..x^(2n-1)y  (total 4n)
-// Multiplication rules (using 0-indexed exponents mod 2n):
-//   x^i · x^j        = x^((i+j) mod 2n)
-//   x^i · x^j·y      = x^((i+j) mod 2n)·y
-//   x^i·y · x^j      = x^((i-j) mod 2n)·y
-//   x^i·y · x^j·y    = x^((i-j+n) mod 2n)
 function tableFromQ4n(n) {
   if (n < 2) n = 2;
   const twon = 2 * n, order = 4 * n;
@@ -722,17 +636,13 @@ function tableFromQ4n(n) {
   const sup = x => String(x).split("").map(d => SUP[parseInt(d)] ?? d).join("");
   let labels;
   if (n === 2) {
-    // Q8: classical quaternion labels. x-coset: x^0=1, x^1=i, x^2=-1, x^3=-i
-    // y-coset positions: y=j, x^1y=k, x^2y=-j, x^3y=-k  (derived from ij=k, etc.)
     labels = ["1", "i", "-1", "-i", "j", "k", "-j", "-k"];
   } else if (n === 3) {
-    // Q12: dicyclic Dic3, classical a/b notation
     labels = [
       ...Array.from({ length: twon }, (_, i) => i === 0 ? "e" : "a" + sup(i)),
       ...Array.from({ length: twon }, (_, i) => i === 0 ? "b" : "a" + sup(i) + "b"),
     ];
   } else {
-    // General Q_{4n}: x-coset, y-coset
     labels = [
       ...Array.from({ length: twon }, (_, i) => i === 0 ? "e" : "x" + sup(i)),
       ...Array.from({ length: twon }, (_, i) => i === 0 ? "y" : "x" + sup(i) + "y"),
@@ -768,16 +678,6 @@ function elementRingQ4n(n) {
 }
 
 function tableFromQ12() {
-  // Q12 = dicyclic group Dic3, order 12
-  // Presentation: <a,x | a^6=e, x^2=a^3, xax^{-1}=a^{-1}>
-  // Elements: a^0..a^5, x*a^0..x*a^5  (indices 0-5 pure rotations, 6-11 with x)
-  // Multiply (a^i * x^p)(a^j * x^q):
-  //   if p=0,q=0: a^(i+j mod 6)
-  //   if p=0,q=1: a^i * x*a^j = x * a^(-i+j) = x*a^((j-i+6)%6)  -> index 6+(j-i+6)%6
-  //   if p=1,q=0: x*a^i * a^j = x*a^(i+j mod 6)                  -> index 6+(i+j)%6
-  //   if p=1,q=1: x*a^i * x*a^j = x*(a^(-i)*x)*a^j ... 
-  //               = a^(-i) commutes with x gives a^i * a^(3) * a^(-j) under conjugation
-  //               xax^-1=a^-1 => x*a^i = a^{-i}*x; so (x*a^i)(x*a^j)=a^{-i}*x^2*a^j=a^{-i}*a^3*a^j=a^{3-i+j mod 6}
   const order = 12, n = 6;
   const table = Array.from({ length: order }, (_, i) => {
     const [ai, pi] = i < n ? [i, 0] : [i - n, 1];
@@ -786,7 +686,6 @@ function tableFromQ12() {
       if (pi === 0 && pj === 0) return (ai + aj) % n;
       if (pi === 0 && pj === 1) return n + ((aj - ai) % n + n) % n;
       if (pi === 1 && pj === 0) return n + (ai + aj) % n;
-      // pi===1, pj===1
       return ((3 - ai + aj) % n + n) % n;
     });
   });
@@ -819,7 +718,6 @@ function elementRingQ12() {
   return { nodes, edges, maxLevel: 1, byLevel: { 0: Array.from({ length: n }, (_, i) => i), 1: Array.from({ length: n }, (_, i) => n + i) }, W, H, nodeR: 26, kind: "Q12", param: 12, table, labels, viewType: "elements" };
 }
 
-// ℤn × ℤm × ℤk: triple direct product
 function tableFromTripleProduct(n, m, k) {
   const g1 = tableFromCyclic(n), g2 = tableFromCyclic(m), g3 = tableFromCyclic(k);
   const g12 = tableFromDirectProduct(g1, g2);
@@ -830,7 +728,6 @@ function elementGridZnZmZk(n, m, k) {
   const { table, labels } = tableFromTripleProduct(n, m, k);
   const order = n * m * k;
   const SPACING = 60, PAD = 50;
-  // Lay out as n*m columns × k rows
   const cols = n * m, rows = k;
   const W = PAD * 2 + SPACING * cols, H = PAD * 2 + SPACING * rows;
   const nodes = labels.map((lbl, i) => {
@@ -841,11 +738,12 @@ function elementGridZnZmZk(n, m, k) {
   for (let r = 0; r < rows; r++) byLevel[r] = Array.from({ length: cols }, (_, c) => r * cols + c);
   return { nodes, edges: [], maxLevel: rows - 1, byLevel, W, H, nodeR: 22, kind: "ZnZmZk", param: n, table, labels, viewType: "elements" };
 }
+
 function cayleyCyclic(n) {
-  return cayleyGraph(tableFromCyclic(n), "Zn", n, [1]); // generator r₁
+  return cayleyGraph(tableFromCyclic(n), "Zn", n, [1]);
 }
+
 function tableFromAlternating(n) {
-  // Aₙ = even permutations of [0..n-1]
   function permutations(arr) {
     if (arr.length <= 1) return [arr];
     return arr.flatMap((v, i) => permutations([...arr.slice(0, i), ...arr.slice(i + 1)]).map(p => [v, ...p]));
@@ -863,7 +761,6 @@ function tableFromAlternating(n) {
   }
   const allPerms = permutations(Array.from({ length: n }, (_, i) => i));
   const evenPerms = allPerms.filter(p => parity(p) === "even");
-  // identity first
   const idIdx = evenPerms.findIndex(p => p.every((v, i) => v === i));
   if (idIdx > 0) { const tmp = evenPerms[0]; evenPerms[0] = evenPerms[idIdx]; evenPerms[idIdx] = tmp; }
   const key = p => p.join(",");
@@ -920,25 +817,18 @@ function elementGridAlternating(n) {
 }
 
 function cayleyDihedral(n) {
-  return cayleyGraph(tableFromDihedral(n), "Dihedral", n, [1, n]); // r and s
+  return cayleyGraph(tableFromDihedral(n), "Dihedral", n, [1, n]);
 }
-//
-//  LATTICE_CATEGORIES: category[] where category = {
-//    key, label, groups: folder[]
-//  }
-//  folder = { key, label, desc, hasParam, ..., views: { key, label, build }[] }
-// ═══════════════════════════════════════════════════════════════════════
 
-// ── 3D shape projections (geometry catalog) ──────────────────────────
+// ── 3D shape projections ──────────────────────────────────────────
 function project3D(pts3d, edges3d, scale = 180) {
-  // Isometric-style projection: rotate ~35° around X, ~45° around Y
   const ax = 35 * Math.PI / 180, ay = 45 * Math.PI / 180;
   const pts2d = pts3d.map(([x, y, z]) => {
     const y1 = y * Math.cos(ax) - z * Math.sin(ax);
     const z1 = y * Math.sin(ax) + z * Math.cos(ax);
     const x2 = x * Math.cos(ay) + z1 * Math.sin(ay);
     const y2 = y1;
-    return [x2, -y2]; // flip Y so +Y is up
+    return [x2, -y2];
   });
   const xs = pts2d.map(p => p[0]), ys = pts2d.map(p => p[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -964,7 +854,7 @@ function project3D(pts3d, edges3d, scale = 180) {
 }
 
 function buildShapeProjection(shape, param = 0) {
-  const φ = (1 + Math.sqrt(5)) / 2; // golden ratio
+  const φ = (1 + Math.sqrt(5)) / 2;
   const shapes = {
     cube: {
       pts: [[-1,-1,-1],[ 1,-1,-1],[ 1, 1,-1],[-1, 1,-1],[-1,-1, 1],[ 1,-1, 1],[ 1, 1, 1],[-1, 1, 1]],
@@ -1006,9 +896,9 @@ function buildShapeProjection(shape, param = 0) {
       pts.push([Math.cos(a), Math.sin(a),  1]);
     }
     for (let i = 0; i < n; i++) {
-      edges.push([i*2, i*2+1]);                     // vertical
-      edges.push([i*2, ((i+1)%n)*2]);               // top ring
-      edges.push([i*2+1, ((i+1)%n)*2+1]);           // bottom ring
+      edges.push([i*2, i*2+1]);
+      edges.push([i*2, ((i+1)%n)*2]);
+      edges.push([i*2+1, ((i+1)%n)*2+1]);
     }
     return project3D(pts, edges);
   }
@@ -1017,12 +907,10 @@ function buildShapeProjection(shape, param = 0) {
   return project3D(s.pts, s.edges);
 }
 
-// ── Boolean lattice Bₙ (power set of {1..n}, ordered by inclusion) ─────
 function buildBooleanLattice(n) {
-  const total = 1 << n; // 2^n subsets
+  const total = 1 << n;
   const nodes = [];
   const edges = [];
-  // Layout: levels = number of bits set (popcount)
   const byLevel = {};
   for (let mask = 0; mask < total; mask++) {
     const bits = mask.toString(2).split("").filter(b => b === "1").length;
@@ -1032,13 +920,11 @@ function buildBooleanLattice(n) {
   const levels = n + 1;
   const W = Math.max(320, 90 * Math.max(...Object.values(byLevel).map(a => a.length)));
   const H = 80 + levels * 80;
-  // Position nodes
   for (let level = 0; level < levels; level++) {
     const row = byLevel[level] ?? [];
     row.forEach((mask, i) => {
       const x = W / 2 + (i - (row.length - 1) / 2) * 80;
       const y = H - 40 - level * 80;
-      // Label: {1,3} style
       const elems = [];
       for (let b = 0; b < n; b++) { if (mask & (1 << b)) elems.push(b + 1); }
       const lbl = elems.length === 0 ? "∅" : `{${elems.join(",")}}`;
@@ -1054,58 +940,42 @@ function buildBooleanLattice(n) {
       });
     });
   }
-  // Edges: mask A → B if A ⊂ B and |B| = |A| + 1
   for (const nodeA of nodes) {
     for (const nodeB of nodes) {
       if (nodeB.level !== nodeA.level + 1) continue;
       if ((nodeA.id & nodeB.id) === nodeA.id) edges.push([nodeA.id, nodeB.id]);
     }
   }
-  // Sort nodes array by id so indexing works
   nodes.sort((a, b) => a.id - b.id);
-  // Remap edges to array indices
   const idToIdx = {};
   nodes.forEach((n, i) => { idToIdx[n.id] = i; });
   const indexedEdges = edges.map(([a, b]) => [idToIdx[a], idToIdx[b]]);
-  nodes.forEach((node, i) => { node.id = i; }); // re-index by position
+  nodes.forEach((node, i) => { node.id = i; });
   const table = Array.from({ length: total }, (_, i) => Array.from({ length: total }, (_, j) => idToIdx[i | j] ?? 0));
   const labels = nodes.map(n => n.label);
   return { nodes, edges: indexedEdges, maxLevel: n, byLevel, W, H, nodeR: 26, kind: "Boolean", param: n, table, labels, viewType: "hasse" };
 }
 
-// ── Element-level Cayley spanning tree ──────────────────────────────
-// Each node = one group element (like the element views).
-// Edges = BFS tree from identity via generators, showing parent→child
-// element relationships: e.g. e → a → a² → a³ for ℤ₄,
-// or branching e → r, e → s for dihedral groups.
-// Only works for groups with a meaningful generator set; falls back to
-// the subgroup-level Hasse layout for groups where this isn't useful.
 function buildElementTree(tableData, kind, param) {
   const { table, labels } = tableData;
   const order = table.length;
 
-  // --- Find a minimal generator set for the whole group ---
-  // Try generators of increasing size until we span the group
   function spansGroup(gens) {
     return getClosure(gens, table).size === order;
   }
 
   let genIndices = [];
-  // Single generator first (cyclic)
   outer1: for (let i = 1; i < order; i++) {
     if (getClosure([i], table).size === order) { genIndices = [i]; break outer1; }
   }
-  // If not cyclic, try pairs
   if (genIndices.length === 0) {
     outer2: for (let i = 1; i < order; i++)
       for (let j = i + 1; j < order; j++)
         if (spansGroup([i, j])) { genIndices = [i, j]; break outer2; }
   }
-  // Fallback: first non-identity element plus its inverse
   if (genIndices.length === 0 && order > 1) genIndices = [1];
 
-  // --- BFS from identity to build spanning tree ---
-  const parent = new Array(order).fill(-1);   // parent[i] = index of parent element
+  const parent = new Array(order).fill(-1);
   const depth  = new Array(order).fill(-1);
   const bfsOrder = [];
   depth[0] = 0;
@@ -1125,8 +995,6 @@ function buildElementTree(tableData, kind, param) {
 
   const maxDepth = Math.max(...depth);
 
-  // --- Tree layout: Reingold–Tilford-inspired (simple left-to-right BFS width) ---
-  // Group nodes by depth level
   const byDepth = {};
   for (let i = 0; i < order; i++) {
     const d = depth[i] < 0 ? maxDepth : depth[i];
@@ -1149,7 +1017,6 @@ function buildElementTree(tableData, kind, param) {
     });
   });
 
-  // Build element-style node descriptors
   const colorByDepth = ["#16a34a","#0284c7","#7c3aed","#ea580c","#db2777","#ca8a04"];
   const nodes = labels.map((lbl, i) => ({
     id: i,
@@ -1174,7 +1041,6 @@ function buildElementTree(tableData, kind, param) {
     _depthColor: colorByDepth[(depth[i] < 0 ? maxDepth : depth[i]) % colorByDepth.length],
   }));
 
-  // Edges = parent→child pairs in the BFS spanning tree
   const edges = [];
   for (let i = 1; i < order; i++) {
     if (parent[i] >= 0) edges.push([parent[i], i]);
@@ -1194,61 +1060,39 @@ function buildElementTree(tableData, kind, param) {
   };
 }
 
-// ── Zpx multiplication tree — Cayley spanning tree of (ℤ/pℤ)* ─────────
-// Shows the multiplicative structure of the group: each node is a nonzero
-// residue class, edges follow the minimal generator (a primitive root),
-// forming a cycle 1 → g → g² → … → 1.
 function buildZpxMultTree(p) {
-  // Find all elements (not necessarily prime p — works for any n via tableFromUn)
   const { table, labels } = tableFromUn(p);
   return buildElementTree({ table, labels }, "Zpx", p);
 }
 
-// ── Modular flower — M_m: residue classes prime to m, orbit petals ────
-// Each orbit under repeated multiplication by a primitive-ish generator
-// becomes its own petal arc around a center hub.
-// Hub = identity (1), petals arranged radially, nodes in each petal
-// laid along an arc away from center.
 function buildModularFlower(m) {
   if (m < 2) m = 2;
-  // Compute U(m): elements coprime to m
   const elems = [];
   for (let i = 1; i < m; i++) {
     let g = i, mm = m;
     while (mm) { [g, mm] = [mm, g % mm]; }
     if (g === 1) elems.push(i);
   }
-  const n = elems.length; // φ(m)
+  const n = elems.length;
   if (n === 0) return buildSingleElement("∅");
 
   const idx = Object.fromEntries(elems.map((e, i) => [e, i]));
-
-  // Cayley table under multiplication mod m
   const table = Array.from({ length: n }, (_, i) =>
     Array.from({ length: n }, (_, j) => idx[(elems[i] * elems[j]) % m])
   );
   const labels = elems.map(String);
 
-  // Find orbits: start from each generator, compute cyclic subgroup
-  // Partition elements into orbits under the *action* of the group on itself
-  // by multiplication — i.e. cyclic subgroups generated by each element.
-  // We want distinct cyclic orbits: group elements by the subgroup they generate.
   const orbitOf = new Array(n).fill(-1);
-  const orbits = []; // each orbit = array of element indices (in traversal order)
-
-  // Always put identity (index 0, value 1) as its own "hub" (orbit -1)
-  orbitOf[0] = -1; // hub special
-
+  const orbits = [];
+  orbitOf[0] = -1;
   for (let start = 1; start < n; start++) {
     if (orbitOf[start] !== -1) continue;
-    // Trace the cyclic subgroup generated by elems[start]
     const orbit = [];
     let cur = start;
     const visited = new Set();
     while (!visited.has(cur)) {
       visited.add(cur);
       orbit.push(cur);
-      // next = cur * elems[start] mod m
       cur = table[cur][start];
     }
     const oid = orbits.length;
@@ -1256,7 +1100,6 @@ function buildModularFlower(m) {
     orbits.push(orbit);
   }
 
-  // Deduplicate orbits: two orbits that share the same set of elements are the same
   const seen = new Map();
   const uniqueOrbits = [];
   orbits.forEach(orb => {
@@ -1268,8 +1111,6 @@ function buildModularFlower(m) {
   const PETAL_INNER = 110;
   const PETAL_SPACING = 66;
   const NODE_R = 26;
-
-  // Compute canvas size first so hub sits exactly at W/2, H/2 (epicenter lands on hub)
   const maxOrbitLen = Math.max(...uniqueOrbits.map(o => o.length), 1);
   const maxR = PETAL_INNER + (maxOrbitLen - 1) * PETAL_SPACING + NODE_R * 2;
   const W = Math.max(580, maxR * 2 + 120);
@@ -1280,7 +1121,6 @@ function buildModularFlower(m) {
   const nodes = [];
   const edges = [];
 
-  // Hub node = identity (element 1, index 0) — placed at canvas center
   nodes.push({
     id: 0,
     label: labels[0], shortLabel: labels[0],
@@ -1294,11 +1134,9 @@ function buildModularFlower(m) {
     _isHub: true,
   });
 
-  // Layout petals radially
   uniqueOrbits.forEach((orb, pi) => {
     const angle = (2 * Math.PI * pi) / numPetals - Math.PI / 2;
     const cosA = Math.cos(angle), sinA = Math.sin(angle);
-
     orb.forEach((elemIdx, ni) => {
       const dist = PETAL_INNER + ni * PETAL_SPACING;
       const nx = CENTER_X + cosA * dist;
@@ -1328,7 +1166,6 @@ function buildModularFlower(m) {
     });
   });
 
-  // Build byLevel
   const byLevel = {};
   nodes.forEach(nd => { (byLevel[nd.level] = byLevel[nd.level] || []).push(nd.id); });
 
@@ -1343,16 +1180,11 @@ function buildModularFlower(m) {
   };
 }
 
-// ── Binary tree of elements — left/right children by operation ────────
-// Lays elements out as a complete binary tree rooted at identity.
-// Level i: elements reachable in i generator applications.
-// Left child = apply first generator, right child = apply inverse (or second gen).
 function buildBinaryTree(tableData, kind, param) {
   const { table, labels } = tableData;
   const order = table.length;
   if (order === 0) return buildSingleElement("∅");
 
-  // Find minimal generators
   let genIdx = [];
   for (let i = 1; i < order; i++) {
     if (getClosure([i], table).size === order) { genIdx = [i]; break; }
@@ -1365,18 +1197,16 @@ function buildBinaryTree(tableData, kind, param) {
   if (genIdx.length === 0) genIdx = [1];
 
   const g = genIdx[0];
-  // Inverse of g
   let gInv = g;
   for (let i = 1; i < order; i++) { if (table[g][i] === 0) { gInv = i; break; } }
   const leftGen = g;
   const rightGen = genIdx[1] ?? gInv;
 
-  // BFS to assign positions
   const visited = new Array(order).fill(false);
   const depth = new Array(order).fill(-1);
   const bfsQ = [0];
   const parent = new Array(order).fill(-1);
-  const childSide = new Array(order).fill(0); // 0=root,1=left,2=right
+  const childSide = new Array(order).fill(0);
   depth[0] = 0; visited[0] = true;
 
   while (bfsQ.length) {
@@ -1398,7 +1228,6 @@ function buildBinaryTree(tableData, kind, param) {
   const W = Math.max(480, H_SPACING * Math.pow(2, Math.min(maxDepth, 4)));
   const H = Math.max(320, PAD_Y * 2 + V_SPACING * maxDepth);
 
-  // Compute x positions using tree layout (Reingold-Tilford approximation)
   const byDepth = {};
   for (let i = 0; i < order; i++) {
     const d = depth[i] < 0 ? maxDepth : depth[i];
@@ -1438,16 +1267,11 @@ function buildBinaryTree(tableData, kind, param) {
   return { nodes, edges, maxLevel: maxDepth, byLevel, W, H, nodeR: 26, kind, param, table, labels, viewType: "tree" };
 }
 
-// ── Cycle graph — radial, petals that loop back to identity hub ────────
-// Like the flower but edges form directed cycles: the last node in each
-// orbit connects back to the hub (identity). Shared nodes (elements
-// appearing in multiple orbits) get cross-edges between orbits.
 function buildCycleGraph(n) {
   const { table, labels } = tableFromUn(n);
   const order = table.length;
   if (order === 0) return buildSingleElement("1");
 
-  // Compute distinct cyclic subgroups (orbits under each generator)
   const seen = new Map();
   const orbits = [];
   for (let start = 1; start < order; start++) {
@@ -1463,8 +1287,6 @@ function buildCycleGraph(n) {
   const PETAL_INNER = 105;
   const PETAL_SPACING = 62;
   const NODE_R = 26;
-
-  // Compute canvas size first so hub sits at W/2, H/2 (epicenter lands on hub)
   const maxOrbitLen2 = Math.max(...orbits.map(o => o.length), 1);
   const maxR = PETAL_INNER + (maxOrbitLen2 - 1) * PETAL_SPACING + NODE_R * 2;
   const W = Math.max(580, maxR * 2 + 120);
@@ -1472,11 +1294,10 @@ function buildCycleGraph(n) {
   const CENTER_X = W / 2;
   const CENTER_Y = H / 2;
 
-  const nodeMap = new Map(); // elemIdx → nodeId in nodes array
+  const nodeMap = new Map();
   const nodes = [];
   const edges = [];
 
-  // Hub = identity at canvas center
   nodes.push({
     id: 0, label: labels[0], shortLabel: labels[0],
     order: 1, index: 1, elements: [labels[0]], elementIndices: [0],
@@ -1523,14 +1344,9 @@ function buildCycleGraph(n) {
   return { nodes, edges, maxLevel: Math.max(...nodes.map(nd => nd.level)), byLevel, W, H, nodeR: NODE_R, kind: "Zpx", param: n, table, labels, viewType: "flower" };
 }
 
-// ── Boolean binary fork tree — layered digraph 0..n levels ─────────────
-// Each level l has 2^l nodes counted linearly 0..(2^l - 1).
-// Node (l, p) forks to children (l+1, 2p) = "0-branch" and (l+1, 2p+1) = "1-branch".
-// Labels show the binary path from root (e.g. "01" = right then left).
 function buildBooleanTree(n) {
   const levels = n + 1;
   const V_GAP = 90, PAD_Y = 50, PAD_X = 40;
-  // Width grows with bottom row: 2^n nodes
   const bottomCount = 1 << n;
   const H_GAP = Math.max(50, Math.min(90, 700 / Math.max(bottomCount, 1)));
   const W = Math.max(380, PAD_X * 2 + H_GAP * (bottomCount - 1));
@@ -1541,13 +1357,12 @@ function buildBooleanTree(n) {
   const edges = [];
   const byLevel = {};
 
-  // Build all nodes by level and position
   for (let lv = 0; lv < levels; lv++) {
-    const count = 1 << lv; // 2^lv nodes at this level
+    const count = 1 << lv;
     byLevel[lv] = [];
     for (let p = 0; p < count; p++) {
-      const id = (1 << lv) + p - 1; // compact id: root=0, next row=1,2, then 3,4,5,6...
-      const path = lv === 0 ? "ε" : p.toString(2).padStart(lv, "0"); // binary path string
+      const id = (1 << lv) + p - 1;
+      const path = lv === 0 ? "ε" : p.toString(2).padStart(lv, "0");
       const x = W / 2 + (p - (count - 1) / 2) * H_GAP;
       const y = PAD_Y + lv * V_GAP;
       nodes.push({
@@ -1564,7 +1379,6 @@ function buildBooleanTree(n) {
     }
   }
 
-  // Fork edges: node at (lv, p) → children (lv+1, 2p) and (lv+1, 2p+1)
   for (let lv = 0; lv < n; lv++) {
     const count = 1 << lv;
     for (let p = 0; p < count; p++) {
@@ -1576,16 +1390,12 @@ function buildBooleanTree(n) {
     }
   }
 
-  // Dummy table (Boolean ∨ operation mapped to node ids) 
   const total = nodes.length;
   const table = Array.from({ length: total }, (_, i) => Array.from({ length: total }, (_, j) => Math.max(i, j)));
   const labels = nodes.map(nd => nd.label);
   return { nodes, edges, maxLevel: n, byLevel, W, H, nodeR: 24, kind: "Boolean", param: n, table, labels, viewType: "tree" };
 }
 
-// ── Boolean grid — all 2ⁿ subsets in a square grid ────────────────────
-// Arranged as a 2D grid where each row is a "level" (popcount),
-// columns spread evenly. Nodes are connected to their cover relations.
 function buildBooleanGrid(n) {
   const total = 1 << n;
   const cols = Math.ceil(Math.sqrt(total));
@@ -1594,7 +1404,6 @@ function buildBooleanGrid(n) {
   const W = PAD * 2 + (cols - 1) * GAP;
   const H = PAD * 2 + (rows - 1) * GAP;
 
-  // Sort masks by popcount then value for a visually clean grid
   const sorted = Array.from({ length: total }, (_, i) => i)
     .sort((a, b) => {
       const pa = a.toString(2).split("").filter(x=>x==="1").length;
@@ -1625,7 +1434,6 @@ function buildBooleanGrid(n) {
     };
   });
 
-  // Cover edges: mask A covers B if B = A | (one bit) and |B| = |A| + 1
   const edges = [];
   for (let mask = 0; mask < total; mask++) {
     for (let b = 0; b < n; b++) {
@@ -1642,9 +1450,6 @@ function buildBooleanGrid(n) {
   return { nodes, edges, maxLevel: n, byLevel, W, H, nodeR: 26, kind: "Boolean", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Integer ring ℤₙ — circular arrangement ────────────────────────────
-// Nodes 0..n-1 in a ring, edges connect consecutive integers.
-// Colored by residue class (even/odd alternating for clarity).
 function buildIntegerRing(n) {
   if (n < 2) n = 2;
   const R = Math.max(90, Math.min(200, 20 * n));
@@ -1673,7 +1478,6 @@ function buildIntegerRing(n) {
   return { nodes, edges, maxLevel: 0, byLevel: { 0: nodes.map(nd => nd.id) }, W, H, nodeR: 26, kind: "IntRing", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Linear chain 0 → 1 → … → n ────────────────────────────────────────
 function buildLinearChain(n) {
   const GAP = 80, PAD = 50;
   const W = PAD * 2 + GAP * n;
@@ -1698,28 +1502,22 @@ function buildLinearChain(n) {
   return { nodes, edges, maxLevel: n, byLevel: Object.fromEntries(nodes.map(nd => [nd.level, [nd.id]])), W, H, nodeR: 26, kind: "LinSeq", param: n, table, labels, viewType: "elements" };
 }
 
-// ── Factorization tree ──────────────────────────────────────────────────
-// Root = n, children = prime factor decomposition level by level.
-// Each composite node splits into its smallest prime factor p and n/p.
 function buildFactorizationTree(n) {
   if (n < 2) n = 2;
   const ORDER_COLS = ["#16a34a","#0284c7","#7c3aed","#db2777","#ea580c","#ca8a04","#be123c","#0891b2","#65a30d","#9333ea"];
 
-  // BFS: each node value splits into [smallestPrimeFactor, value/smallestPrimeFactor]
-  // Stop when value is prime (leaf)
   function smallestPrime(x) {
     if (x < 2) return x;
     for (let i = 2; i * i <= x; i++) if (x % i === 0) return i;
-    return x; // x is prime
+    return x;
   }
   function isPrime(x) { return x >= 2 && smallestPrime(x) === x; }
 
   const nodes = [];
   const edges = [];
-  // nodeId → { value, level, pos }
   const queue = [{ value: n, level: 0, parentId: -1 }];
   const byLevel = {};
-  const posAtLevel = {}; // level → count so far (for x positioning)
+  const posAtLevel = {};
 
   while (queue.length) {
     const { value, level, parentId } = queue.shift();
@@ -1730,7 +1528,7 @@ function buildFactorizationTree(n) {
 
     nodes.push({
       id, level, value,
-      x: 0, y: 0, // will be set after BFS
+      x: 0, y: 0,
       label: String(value), shortLabel: String(value),
       order: value, index: 1, elements: [String(value)], elementIndices: [id],
       generators: [], generatorLabels: [], genAll: String(value),
@@ -1749,14 +1547,12 @@ function buildFactorizationTree(n) {
     }
   }
 
-  // Now lay out positions
   const V_GAP = 90, H_GAP = 80, PAD = 50;
   const maxLevel = Math.max(...nodes.map(nd => nd.level));
   const H = PAD * 2 + V_GAP * maxLevel;
   const maxRowW = Math.max(...Object.values(byLevel).map(arr => arr.length));
   const W = Math.max(280, PAD * 2 + H_GAP * (maxRowW - 1));
 
-  // Position by level row
   Object.entries(byLevel).forEach(([lv, ids]) => {
     const count = ids.length;
     ids.forEach((id, i) => {
@@ -1778,9 +1574,6 @@ function buildFactorizationTree(n) {
 function generateMermaidFile(lattices, morphisms, notes = []) {
   let output = [];
   
-  // ── Helpers ────────────────────────────────────────────────────────
-
-  // ✅ FIXED: Include angle brackets < and > as unsafe
   const isUnsafe = (str) => /[[\]{}|"<>]/.test(str);
   const escapeQuotes = (str) => str.replace(/"/g, '""');
   
@@ -1794,12 +1587,11 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     return trimmed;
   };
 
-  // Sanitize subgraph titles (remove characters that break Mermaid)
   const sanitizeSubgraphTitle = (title) => {
     if (!title) return 'Group';
     return title
-      .replace(/[\[\]{}<>]/g, '')  // Remove brackets and braces
-      .replace(/"/g, "'")           // Replace quotes with apostrophes
+      .replace(/[\[\]{}<>]/g, '')
+      .replace(/"/g, "'")
       .trim()
       .substring(0, 30) || 'Group';
   };
@@ -1841,15 +1633,12 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     return ORDER_COLS[idx];
   };
 
-  // ─── HEADER ──────────────────────────────────────────────────────────
   output.push('%%{init: { "theme": "base", "themeVariables": { "primaryColor": "#B7D0DE", "primaryTextColor": "#0B151E", "primaryBorderColor": "#93b5c8", "lineColor": "#93b5c8", "tertiaryColor": "#F4F6F4", "fontFamily": "monospace" } } }%%');
   output.push('graph TB');
   output.push('');
 
-  // ─── COLLECT ALL NODES FOR STYLING ────────────────────────────────
   const allNodes = new Map();
 
-  // ─── GENERATE LATTICE SUBGRAPHS ────────────────────────────────────
   lattices.forEach((lattice) => {
     const base = lattice.base;
     if (!base || !base.nodes) return;
@@ -1878,7 +1667,6 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     output.push('');
   });
 
-  // ─── GENERATE EDGES ─────────────────────────────────────────────────
   if (lattices.some(l => l.base?.edges?.length > 0)) {
     output.push('    %% Subgroup relationships');
     output.push('');
@@ -1904,7 +1692,6 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     });
   });
 
-  // ─── GENERATE MORPHISMS ────────────────────────────────────────────
   if (morphisms && morphisms.length > 0) {
     output.push('');
     output.push('    %% Morphisms');
@@ -1933,7 +1720,6 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     });
   }
 
-  // ─── STYLING CLASSES ───────────────────────────────────────────────
   output.push('');
   output.push('    %% Node styling by order');
   
@@ -1953,7 +1739,6 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     output.push(`    class ${info.id} ${className};`);
   }
 
-  // ─── SPECIAL OVERRIDES ─────────────────────────────────────────────
   output.push('');
   output.push('    %% Special overrides');
   output.push('    classDef identity fill:#fbbf24,stroke:#ca8a04,color:#0B151E,stroke-width:2px;');
@@ -1967,14 +1752,12 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     }
   }
 
-  // ─── LEGEND AND REFERENCE SECTION ──────────────────────────────────
   output.push('');
   output.push('    %% ============================================');
   output.push('    %% LEGEND AND REFERENCE');
   output.push('    %% ============================================');
   output.push('');
 
-  // ---- Shape Key (only elements that appear) ----
   output.push('    subgraph Key["Shape Key"]');
   
   let hasIdentity = false;
@@ -2036,7 +1819,6 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
   output.push('    end');
   output.push('');
 
-  // ---- Graph Reference ----
   const graphsWithDesc = lattices.filter(l => l.description);
   if (graphsWithDesc.length > 0) {
     output.push('    subgraph GraphRef["Graph Reference"]');
@@ -2051,7 +1833,6 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     output.push('');
   }
 
-  // ---- Morphism Reference ----
   const morphsWithDesc = morphisms.filter(m => m.description);
   if (morphsWithDesc.length > 0) {
     output.push('    subgraph MorphRef["Morphism Reference"]');
@@ -2066,7 +1847,6 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     output.push('');
   }
 
-  // ---- Canvas Notes Reference ----
   if (notes && notes.length > 0) {
     const nonEmptyNotes = notes.filter(n => n.text && n.text.trim().length > 0);
     if (nonEmptyNotes.length > 0) {
@@ -2082,9 +1862,9 @@ function generateMermaidFile(lattices, morphisms, notes = []) {
     }
   }
 
-  // ─── FINAL ──────────────────────────────────────────────────────────
   return output.join('\n');
 }
+
 // ═══════════════════════════════════════════════════════════════════════
 //  LATTICE_CATEGORIES
 // ═══════════════════════════════════════════════════════════════════════
@@ -2297,14 +2077,11 @@ const LATTICE_CATEGORIES = [
   },
 ];
 
-// Flat list of all groups (for param state init, legacy lookups)
 const LATTICE_GROUPS = LATTICE_CATEGORIES.flatMap(c => c.groups);
-
-// Flat catalog for legacy lookups (params init etc.)
 const LATTICE_CATALOG = LATTICE_GROUPS;
 
 // ═══════════════════════════════════════════════════════════════════════
-//  MORPHISM ANALYSIS  (generalized — uses table indices from nodes)
+//  MORPHISM ANALYSIS
 // ═══════════════════════════════════════════════════════════════════════
 
 function analyzeMorphism(strands, lattices, latticeViews) {
@@ -2323,7 +2100,6 @@ function analyzeMorphism(strands, lattices, latticeViews) {
     };
   });
 
-  // Build element-level map: source label → target label
   const elementMap = new Map();
   for (const s of strands) {
     const srcLV = latticeViews.find(lv => lv.entry.id === s.fromLatticeId);
@@ -2343,7 +2119,6 @@ function analyzeMorphism(strands, lattices, latticeViews) {
 
   if (!elementMap.size) return { isHomo: null, isInjective: null, isSurjective: null, kernel: [], image: [], strandLabels };
 
-  // Homomorphism check using Cayley tables
   const srcNodes = [...new Set(strands.map(s => s.fromLatticeId))];
   const tgtNodes = [...new Set(strands.map(s => s.toLatticeId))];
   let isHomo = null;
@@ -2371,7 +2146,6 @@ function analyzeMorphism(strands, lattices, latticeViews) {
     }
   }
 
-  // Kernel: source elements mapping to identity (idx 0) in target
   const kernel = [...elementMap.entries()]
     .filter(([, v]) => v.idx === 0)
     .map(([k]) => {
@@ -2380,10 +2154,8 @@ function analyzeMorphism(strands, lattices, latticeViews) {
       return lv?.entry.base?.labels?.[idx] ?? String(idx);
     });
 
-  // Image: distinct target element labels reached
   const image = [...new Set([...elementMap.values()].map(v => v.lbl))];
 
-  // Injectivity
   const seen = new Set();
   let isInjective = true;
   for (const v of elementMap.values()) {
@@ -2392,7 +2164,6 @@ function analyzeMorphism(strands, lattices, latticeViews) {
     seen.add(key);
   }
 
-  // Surjectivity
   const tgtElems = new Set();
   for (const s of strands) {
     const tgtLV = latticeViews.find(lv => lv.entry.id === s.toLatticeId);
@@ -2405,11 +2176,12 @@ function analyzeMorphism(strands, lattices, latticeViews) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  COLOR SYSTEM  (unchanged)
+//  COLOR SYSTEM
 // ═══════════════════════════════════════════════════════════════════════
 
 const ORDER_COLS = ["#16a34a","#0284c7","#7c3aed","#db2777","#ea580c","#ca8a04","#be123c","#0891b2","#65a30d","#9333ea"];
 const LATTICE_ACCENTS = ["#0284c7","#16a34a","#7c3aed","#ea580c","#db2777","#ca8a04"];
+const MORPHISM_COLORS = ["#f59e0b","#10b981","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16"];
 
 function buildOrderColorMap(nodes) {
   const orders = [...new Set(nodes.map(n => n.order))].sort((a, b) => a - b);
@@ -2419,10 +2191,8 @@ function buildOrderColorMap(nodes) {
 }
 function orderColor(order, colorMap) { return colorMap[order] ?? "#9aaa88"; }
 
-const MORPHISM_COLORS = ["#f59e0b","#10b981","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899","#84cc16"];
-
 // ═══════════════════════════════════════════════════════════════════════
-//  PALETTE  (unchanged)
+//  PALETTE
 // ═══════════════════════════════════════════════════════════════════════
 
 const C = {
@@ -2442,7 +2212,7 @@ const C = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SHARED UI COMPONENTS  (unchanged)
+//  SHARED UI COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════
 
 function HPSplitter({ onDrag, containerRef }) {
@@ -2457,7 +2227,6 @@ function HPSplitter({ onDrag, containerRef }) {
       if (!dragging.current) return;
       const delta = e.clientY - startY.current;
       startY.current = e.clientY;
-      // Get the actual container height so flex delta maps 1:1 with pixels
       const h = containerRef?.current?.getBoundingClientRect().height ?? 600;
       onDrag(delta, h);
     };
@@ -2487,7 +2256,6 @@ function Pane({ title, children, flex, open, onToggle, scrollClass = "" }) {
       flex: open ? (flex ?? 1) : "0 0 auto",
       minHeight: 0, overflow: "hidden", flexShrink: open ? 1 : 0,
     }}>
-      {/* Pane header — always visible */}
       <div onClick={onToggle} style={{
         padding: "9px 14px", background: C.paneHeader,
         borderBottom: `1px solid ${C.border}`, borderTop: `1px solid ${C.border}`,
@@ -2573,7 +2341,6 @@ function Section({ label, badge, accent, defaultOpen = true, depth = 0, children
           color: C.inkMid, fontFamily: "'Courier New', monospace",
           minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>{label}</span>
-        {/* rightExtra — always visible */}
         {rightExtra && (
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}
             onClick={e => e.stopPropagation()}>
@@ -2682,7 +2449,6 @@ function SettingsModal({
   const isPreviewPanning = useRef(false);
   const previewPanStart = useRef({ mouseX: 0, mouseY: 0, camX: 0, camY: 0 });
 
-  // --- 1. SIMPLE BOUNDING BOX WITH TIGHT MARGINS ---
   const getLatticeBounds = () => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     let hasNodes = false;
@@ -2707,7 +2473,6 @@ function SettingsModal({
       return { x: -200, y: -150, width: 400, height: 300 };
     }
     
-    // Tight padding (5% of size, minimum 10px)
     const width = maxX - minX;
     const height = maxY - minY;
     const padX = Math.max(width * 0.05, 10);
@@ -2721,14 +2486,12 @@ function SettingsModal({
     };
   };
 
-  // --- 2. COMPUTE FIT CAMERA ---
   const computeFitCamera = () => {
     const bounds = getLatticeBounds();
     const canvasW = 400, canvasH = 320;
     
     const scaleX = canvasW / bounds.width;
     const scaleY = canvasH / bounds.height;
-    // Use 90% of the max scale to leave a small margin
     const scale = Math.min(scaleX, scaleY) * 0.9;
     
     const cx = bounds.x + bounds.width / 2;
@@ -2741,7 +2504,6 @@ function SettingsModal({
     };
   };
 
-  // --- 3. DRAWING FUNCTION ---
   const drawPreview = useCallback(() => {
     const canvas = previewCanvasRef.current;
     if (!canvas) return;
@@ -2753,11 +2515,9 @@ function SettingsModal({
     ctx.translate(previewCam.x, previewCam.y);
     ctx.scale(previewCam.k, previewCam.k);
 
-    // Background
     ctx.fillStyle = '#F4F6F4';
     ctx.fillRect(-2000, -2000, 4000, 4000);
 
-    // Grid (simplified for preview)
     if (gridSettings.pattern !== 'none') {
       ctx.strokeStyle = gridSettings.color;
       ctx.lineWidth = 0.5 / previewCam.k;
@@ -2778,7 +2538,6 @@ function SettingsModal({
       }
     }
 
-    // Draw lattices
     lattices.forEach((lattice) => {
       const base = lattice.base;
       if (!base || !base.nodes) return;
@@ -2818,7 +2577,6 @@ function SettingsModal({
     ctx.restore();
   }, [lattices, gridSettings, previewCam]);
 
-  // --- 4. INITIALIZE ON OPEN ---
   useEffect(() => {
     if (isOpen) {
       const newCam = computeFitCamera();
@@ -2826,13 +2584,11 @@ function SettingsModal({
     }
   }, [isOpen]);
 
-  // --- 5. DRAW WHENEVER ANYTHING CHANGES ---
   useEffect(() => {
     if (!isOpen) return;
     drawPreview();
   }, [drawPreview, isOpen]);
 
-  // --- 6. PREVIEW INTERACTIONS ---
   const onPreviewWheel = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2890,7 +2646,6 @@ function SettingsModal({
     setPreviewCam(computeFitCamera());
   };
 
-  // --- 7. PNG EXPORT (unchanged) ---
   const exportPNG = useCallback(async () => {
     const mainElement = panelRef?.current;
     if (!mainElement) return;
@@ -2938,7 +2693,6 @@ function SettingsModal({
     img.src = url;
   }, [panelRef, saveName]);
 
-  // --- 8. SAVE / LOAD ---
   const handleSave = useCallback(async (format) => {
     const state = {
       lattices,
@@ -3039,7 +2793,6 @@ function SettingsModal({
         flexDirection: "column",
         overflow: "hidden",
       }}>
-        {/* Header */}
         <div style={{
           padding: "16px 24px",
           borderBottom: "1px solid #E8ECEE",
@@ -3082,7 +2835,6 @@ function SettingsModal({
           </button>
         </div>
 
-        {/* Main content */}
         <div style={{
           display: "flex",
           flex: 1,
@@ -3090,7 +2842,6 @@ function SettingsModal({
           overflow: "hidden",
         }}>
           
-          {/* Left: Interactive Preview */}
           <div style={{
             width: "45%",
             padding: "20px 16px 20px 20px",
@@ -3171,7 +2922,6 @@ function SettingsModal({
             </div>
           </div>
 
-          {/* Right: Tabs */}
           <div style={{
             flex: 1,
             padding: "20px 20px 20px 16px",
@@ -3215,7 +2965,6 @@ function SettingsModal({
               overflowX: "hidden",
               scrollbarGutter: "stable",
             }}>
-              {/* DATA TAB */}
               {activeTab === 'data' && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div>
@@ -3368,7 +3117,6 @@ function SettingsModal({
                 </div>
               )}
 
-              {/* INFO TAB */}
               {activeTab === 'info' && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                   <div>
@@ -3399,7 +3147,6 @@ function SettingsModal({
                 </div>
               )}
 
-              {/* STYLE TAB */}
               {activeTab === 'style' && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div>
@@ -3494,7 +3241,7 @@ function SettingsModal({
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  NODE RENDERING  (unchanged)
+//  NODE RENDERING
 // ═══════════════════════════════════════════════════════════════════════
 
 function nodeGeometry(node, R) {
@@ -3515,9 +3262,6 @@ function ShapeOccluder({ node, R }) {
 const didDragRef = { current: false };
 
 function ShapeNode({ node, latticeId, colorMap, isSelected, isAdjacent, isDrawMode, onToggleSelect, onMouseDown }) {
-  // Element/geometry views: B&W — color can't accurately represent order info for all layouts
-  // Tree views: use depth color stored on the node
-  // Flower views: color by petal index; hub is accent gold
   const PETAL_COLORS = ["#0284c7","#7c3aed","#db2777","#ea580c","#16a34a","#ca8a04","#be123c","#0891b2","#65a30d","#9333ea"];
   const isElemView = node.viewType === "elements" || node.viewType === "geometry";
   const isTreeView = node.viewType === "tree";
@@ -3566,7 +3310,6 @@ function ShapeNode({ node, latticeId, colorMap, isSelected, isAdjacent, isDrawMo
 }
 
 function Epicenter({ x, y, accent, onMouseDown, cameraScale }) {
-  // Minimum 12px on screen; grows naturally with zoom but never shrinks below
   const minR = 12;
   const R = Math.max(minR / (cameraScale || 1), 14);
   return (
@@ -3583,18 +3326,17 @@ function Epicenter({ x, y, accent, onMouseDown, cameraScale }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  LATTICE ENTRY HELPERS  (unchanged)
+//  LATTICE ENTRY HELPERS
 // ═══════════════════════════════════════════════════════════════════════
 
 let nextLatticeId = 1;
 
 function makeLatticeEntry(base, canvasW, canvasH, labelOverride, params = {}) {
-  // Use a unique ID: timestamp + random + increment to be safe
   const id = Date.now() + Math.random() * 1000 + (nextLatticeId++);
   const arrowViews = new Set(["elements", "geometry", "cayley", "flower", "tree"]);
   const showArrows = !arrowViews.has(base.viewType);
   return {
-    id,  // <-- now guaranteed unique even across loads
+    id,
     label: labelOverride,
     kind: base.kind,
     param: params.param ?? base.param,
@@ -3613,7 +3355,6 @@ function makeLatticeEntry(base, canvasW, canvasH, labelOverride, params = {}) {
 function resolveNodes(entry) {
   const base = entry.base;
 
-  // Collapsed: render a single representative node at the epicenter
   if (entry.isCollapsed) {
     const fullNode = base.nodes[base.nodes.length - 1] ?? base.nodes[0];
     const rep = {
@@ -3632,7 +3373,6 @@ function resolveNodes(entry) {
   const layout = entry.hasseLayout ?? {};
   const isHasse = base.viewType === "hasse" || base.viewType === "tree" || !base.viewType;
 
-  // Compute adjusted positions from hasse layout options
   let adjustedX = null, adjustedY = null;
 
   if (isHasse && (layout.genOffset || layout.rankByOrder) && base.nodes.length > 0) {
@@ -3640,13 +3380,10 @@ function resolveNodes(entry) {
     const W = base.W, H = base.H;
     const padX = 60, padY = 55;
 
-    // rankByOrder: re-assign Y based on element order instead of lattice level
-    // genOffset: nudge X within each level based on generator count (rank)
     const orders = [...new Set(nodes.map(n => n.order))].sort((a, b) => a - b);
     const maxOrder = Math.max(...orders);
     const minOrder = Math.min(...orders);
 
-    // Build level groups (by order if rankByOrder, otherwise use existing level)
     const byRank = {};
     nodes.forEach((n, i) => {
       const key = layout.rankByOrder ? n.order : n.level;
@@ -3664,14 +3401,12 @@ function resolveNodes(entry) {
 
     rankKeys.forEach((rk, rankIdx) => {
       const group = byRank[rk];
-      // Sort within level by generator rank if genOffset, then apply sub-offset
       const sorted = layout.genOffset
         ? [...group].sort((a, b) => (nodes[a].rank ?? 1) - (nodes[b].rank ?? 1))
         : group;
 
       sorted.forEach((ni, idx) => {
         const baseX = padX + (idx + 1) * (W - 2 * padX) / (sorted.length + 1);
-        // genOffset: within the same level, stagger by rank (generator count) slightly
         const genNudge = layout.genOffset
           ? ((nodes[ni].rank ?? 1) - 1) * NODE_R * 0.6
           : 0;
@@ -3756,29 +3491,111 @@ export default function App() {
       LATTICE_GROUPS.filter(c => c.hasParam3).map(c => [c.key, c.paramDefault3])
     )
   );
-  // Which view is selected per group folder key (defaults to first view = "hasse")
   const [selectedViews, setSelectedViews] = useState(
     Object.fromEntries(LATTICE_GROUPS.map(g => [g.key, g.views[0].key]))
   );
   const [placingLattice, setPlacingLattice] = useState(null);
   const [ghostMousePos, setGhostMousePos] = useState(null);
-  // nodeCustomStyles: Map key `latticeId:nodeId` → { color?, labelAlias? }
   const [nodeCustomStyles, setNodeCustomStyles] = useState({});
-  // Drawing toolbar collapse + last-used tool quick-toggle
   const [toolbarOpen, setToolbarOpen] = useState(true);
   const [lastDrawTool, setLastDrawTool] = useState("pen");
   const [showRawModal, setShowRawModal] = useState(false);
   const [singleElementLabel, setSingleElementLabel] = useState("a");
-  const [selectedNodes, setSelectedNodes] = useState({}); // { latticeId: Set(nodeNodes) }
-  const [selectedGraphId, setSelectedGraphId] = useState(null); // which lattice is "focused" in right panel
-  const [confirmDeleteNodes, setConfirmDeleteNodes] = useState(new Set()); // lattice ids with delete confirm open
+  const [selectedNodes, setSelectedNodes] = useState({});
+  const [selectedGraphId, setSelectedGraphId] = useState(null);
+  const [confirmDeleteNodes, setConfirmDeleteNodes] = useState(new Set());
   const [morphisms, setMorphisms] = useState([]);
-  const [selectedMorphismNodes, setSelectedMorphismNodes] = useState(new Set()); // radio/multi-select in morphism panel
+  const [selectedMorphismNodes, setSelectedMorphismNodes] = useState(new Set());
   const [activeMorphismId, setActiveMorphismId] = useState(null);
   const [strandPreview, setStrandPreview] = useState(null);
   const strandDragging = useRef(null);
   const activeMorphismIdRef = useRef(null);
   useEffect(() => { activeMorphismIdRef.current = activeMorphismId; }, [activeMorphismId]);
+
+  // ── Keyboard / tool state ──
+  const [isKeySequenceActive, setIsKeySequenceActive] = useState(false);
+  const [sequenceBuffer, setSequenceBuffer] = useState("");
+
+  // ── History (Undo/Redo) ──
+  const [history, setHistory] = useState({ past: [], future: [] });
+
+  // ── Rectangle selection ──
+  const [rectSelectActive, setRectSelectActive] = useState(false);
+  const [rectStart, setRectStart] = useState(null);
+  const [rectEnd, setRectEnd] = useState(null);
+
+  // ── Batch strand ──
+  const [batchStrandActive, setBatchStrandActive] = useState(false);
+
+  // ── Tab key detection ──
+  const tabPressed = useRef(false);
+
+  // ── Node selection helpers ──
+  const isNodeSelected = useCallback((latticeId, nodeId) => {
+    return selectedNodes[latticeId]?.has(nodeId) || false;
+  }, [selectedNodes]);
+
+  const toggleNodeSelect = useCallback((latticeId, nodeId) => {
+    setSelectedNodes(prev => {
+      const latticeSelection = prev[latticeId] || new Set();
+      const next = new Set(latticeSelection);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      if (next.size === 0) {
+        const { [latticeId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [latticeId]: next };
+    });
+    setSelectedGraphId(latticeId);
+  }, []);
+
+  // ── Derived views ─────────────────────────────────────────────────
+  const latticeViews = lattices.map((entry, idx) => {
+    const rawNodes = resolveNodes(entry);
+    const nodes = rawNodes.map(n => {
+      const style = nodeCustomStyles[`${entry.id}:${n.id}`];
+      if (!style) return n;
+      return {
+        ...n,
+        ...(style.color ? { _customColor: style.color } : {}),
+        ...(style.labelAlias ? { shortLabel: style.labelAlias } : {}),
+      };
+    });
+    const colorMap = buildOrderColorMap(nodes);
+    const statsBase = entry.base;
+    const fullNode = entry.isCollapsed
+      ? statsBase.nodes[statsBase.nodes.length - 1] ?? null
+      : nodes[nodes.length - 1] ?? null;
+    const accent = LATTICE_ACCENTS[idx % LATTICE_ACCENTS.length];
+    const hlEdgeSet = new Set();
+    const adjacentNodes = new Set();
+    if (!entry.isCollapsed) {
+      entry.base.edges.forEach(([a, b], i) => {
+        const ka = `${entry.id}:${a}`, kb = `${entry.id}:${b}`;
+        if (isNodeSelected(entry.id, a) || isNodeSelected(entry.id, b)) { hlEdgeSet.add(i); adjacentNodes.add(a); adjacentNodes.add(b); }
+      });
+    }
+    const unElems = entry.base.labels?.map((l, i) => ({ i, v: parseInt(l) })).filter(x => !isNaN(x.v) && entry.kind === "Un");
+    const zParts = entry.kind === "Un" ? zStructureParts(entry.param) : [];
+    const expVal = entry.kind === "Un" && unElems ? groupExponent(unElems.map(x => x.v).filter(v => v > 0), entry.param) : "—";
+    return { entry, nodes, colorMap, fullNode, statsBase, accent, hlEdgeSet, adjacentNodes, zParts, expVal };
+  });
+
+  const allSelectedNodes = latticeViews.flatMap(({ entry, nodes, colorMap, fullNode }) => {
+    const latticeSelectedNodes = selectedNodes[entry.id] || new Set();
+    return [...latticeSelectedNodes].map(nodeId => {
+      const node = nodes.find(n => n.id === nodeId);
+      if (!node) return null;
+      const indexVal = (fullNode && fullNode.order % node.order === 0) ? fullNode.order / node.order : "—";
+      return { node, colorMap, latticeId: entry.id, latticeLabel: entry.label, indexVal, entry };
+    }).filter(Boolean);
+  });
+
+  const totalSelected = Object.values(selectedNodes).reduce((sum, set) => sum + set.size, 0);
 
   const [leftW, setLeftW] = useState(270);
   const [rightW, setRightW] = useState(310);
@@ -3794,6 +3611,8 @@ export default function App() {
   const [leftPane2Flex, setLeftPane2Flex] = useState(1);
   const [leftPane3Flex, setLeftPane3Flex] = useState(0.8);
 
+  // ── Panel toggle & splitter handlers ──
+
   const [rightPane1Open, setRightPane1Open] = useState(true);
   const [rightPane2Open, setRightPane2Open] = useState(true);
   const [rightPane3Open, setRightPane3Open] = useState(true);
@@ -3801,6 +3620,60 @@ export default function App() {
   const [rightPane2Flex, setRightPane2Flex] = useState(1.4);
   const [rightPane3Flex, setRightPane3Flex] = useState(1.2);
 
+  const toggleLeft = () => {
+    if (leftCollapsed) {
+      setLeftW(leftWBeforeCollapse.current);
+      setLeftCollapsed(false);
+    } else {
+      leftWBeforeCollapse.current = leftW;
+      setLeftW(0);
+      setLeftCollapsed(true);
+    }
+  };
+
+  const toggleRight = () => {
+    if (rightCollapsed) {
+      setRightW(rightWBeforeCollapse.current);
+      setRightCollapsed(false);
+    } else {
+      rightWBeforeCollapse.current = rightW;
+      setRightW(0);
+      setRightCollapsed(true);
+    }
+  };
+
+  const onLeftSplit12 = useCallback((delta, h) => {
+    if (!leftPane1Open || !leftPane2Open) return;
+    const ratio = delta / (h || 600);
+    const totalFlex = leftPane1Flex + leftPane2Flex;
+    setLeftPane1Flex(f => Math.max(0.1, f + ratio * totalFlex));
+    setLeftPane2Flex(f => Math.max(0.1, f - ratio * totalFlex));
+  }, [leftPane1Open, leftPane2Open, leftPane1Flex, leftPane2Flex]);
+
+  const onLeftSplit23 = useCallback((delta, h) => {
+    if (!leftPane2Open || !leftPane3Open) return;
+    const ratio = delta / (h || 600);
+    const totalFlex = leftPane2Flex + leftPane3Flex;
+    setLeftPane2Flex(f => Math.max(0.1, f + ratio * totalFlex));
+    setLeftPane3Flex(f => Math.max(0.1, f - ratio * totalFlex));
+  }, [leftPane2Open, leftPane3Open, leftPane2Flex, leftPane3Flex]);
+
+  const onRightSplit12 = useCallback((delta, h) => {
+    if (!rightPane1Open || !rightPane2Open) return;
+    const ratio = delta / (h || 600);
+    const totalFlex = rightPane1Flex + rightPane2Flex;
+    setRightPane1Flex(f => Math.max(0.1, f + ratio * totalFlex));
+    setRightPane2Flex(f => Math.max(0.1, f - ratio * totalFlex));
+  }, [rightPane1Open, rightPane2Open, rightPane1Flex, rightPane2Flex]);
+
+  const onRightSplit23 = useCallback((delta, h) => {
+    if (!rightPane2Open || !rightPane3Open) return;
+    const ratio = delta / (h || 600);
+    const totalFlex = rightPane2Flex + rightPane3Flex;
+    setRightPane2Flex(f => Math.max(0.1, f + ratio * totalFlex));
+    setRightPane3Flex(f => Math.max(0.1, f - ratio * totalFlex));
+  }, [rightPane2Open, rightPane3Open, rightPane2Flex, rightPane3Flex]);
+  
   const [camera, setCamera] = useState({ tx: 0, ty: 0, scale: 1 });
   const cameraRef = useRef({ tx: 0, ty: 0, scale: 1 });
   useEffect(() => { cameraRef.current = camera; }, [camera]);
@@ -3831,7 +3704,7 @@ export default function App() {
   const [drawMenuOpen, setDrawMenuOpen] = useState(false);
   const [drawMenuHovered, setDrawMenuHovered] = useState(null);
   const drawMenuLeaveTimer = useRef(null);
-  const [drawLineStyle, setDrawLineStyle] = useState("plain"); // "plain"|"arrow-end"|"arrow-start"|"arrow-both"
+  const [drawLineStyle, setDrawLineStyle] = useState("plain");
   const [morphBtnOpen, setMorphBtnOpen] = useState(false);
   const [morphBtnHovered, setMorphBtnHovered] = useState(null);
   const drawPermRef = useRef(true);
@@ -3847,14 +3720,14 @@ export default function App() {
   const [gridSettings, setGridSettings] = useState({
     color: "#DEE7DC",
     size: 32,
-    pattern: "lines", // "lines" | "dots" | "cross" | "none"
+    pattern: "lines",
   });
 
   // ── Notes system ──────────────────────────────────────────────────
   const [notes, setNotes] = useState([]);
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [collapsedNotes, setCollapsedNotes] = useState(new Set());
-  const noteDragging = useRef(null); // { id, startMx, startMy, startX, startY }
+  const noteDragging = useRef(null);
   const editingNoteIdRef = useRef(null);
   useEffect(() => { editingNoteIdRef.current = editingNoteId; }, [editingNoteId]);
 
@@ -3872,8 +3745,6 @@ export default function App() {
     setNotes(prev => prev.filter(n => n.id !== id));
     if (editingNoteId === id) setEditingNoteId(null);
   }, [editingNoteId]);
-
-  // Canvas starts empty — user places graphs from the catalog
 
   // ── Helpers ───────────────────────────────────────────────────────
   const updateLattice = useCallback((id, patch) => {
@@ -3897,13 +3768,13 @@ export default function App() {
   }, []);
 
   const placeLatticeAt = useCallback((base, label, worldX, worldY, params = {}) => {
-  const r = panelRef.current?.getBoundingClientRect();
-  const cw = r?.width ?? 800, ch = r?.height ?? 600;
-  const entry = makeLatticeEntry(base, cw, ch, label, params); 
-  entry.epicenter = { x: worldX, y: worldY };
-  setLattices(prev => [...prev, entry]);
-  setSelectedGraphId(entry.id);
-}, []);
+    const r = panelRef.current?.getBoundingClientRect();
+    const cw = r?.width ?? 800, ch = r?.height ?? 600;
+    const entry = makeLatticeEntry(base, cw, ch, label, params); 
+    entry.epicenter = { x: worldX, y: worldY };
+    setLattices(prev => [...prev, entry]);
+    setSelectedGraphId(entry.id);
+  }, []);
 
   const removeLattice = useCallback((id) => {
     setLattices(prev => prev.filter(l => l.id !== id));
@@ -3913,18 +3784,14 @@ export default function App() {
     });
     setSelectedGraphId(prev => prev === id ? null : prev);
     setConfirmDeleteNodes(prev => { const next = new Set(prev); next.delete(id); return next; });
-    // Purge strands that reference the deleted lattice
     setMorphisms(prev => prev.map(m => ({
       ...m,
       strands: m.strands.filter(s => s.fromLatticeId !== id && s.toLatticeId !== id),
     })));
   }, []);
 
-  // Collapse an entire graph into a single representative node.
-  // All incoming/outgoing morphism strands are re-routed to that node.
   const collapseGraphToNode = useCallback((latticeId) => {
     setLattices(prev => prev.map(l => l.id !== latticeId ? l : { ...l, isCollapsed: true }));
-    // Save current strand endpoints, re-route to node 0 while collapsed
     setMorphisms(prev => prev.map(m => ({
       ...m,
       strands: m.strands.map(s => ({
@@ -3938,7 +3805,6 @@ export default function App() {
 
   const expandGraph = useCallback((latticeId) => {
     setLattices(prev => prev.map(l => l.id !== latticeId ? l : { ...l, isCollapsed: false }));
-    // Restore saved strand endpoints
     setMorphisms(prev => prev.map(m => ({
       ...m,
       strands: m.strands.map(s => {
@@ -3954,9 +3820,143 @@ export default function App() {
     })));
   }, []);
 
-  // ── Node mouse-down (strand or drag) ─────────────────────────────
+  // ── Helper functions for keyboard shortcuts ──────────────────────
+  const pushHistory = useCallback(() => {
+    setHistory(prev => ({
+      past: [...prev.past, {
+        drawStrokes: drawStrokes,
+        notes: notes,
+      }],
+      future: []
+    }));
+  }, [drawStrokes, notes]);
+
+  const undo = useCallback(() => {
+    if (history.past.length === 0) return;
+    const prev = history.past[history.past.length - 1];
+    setHistory(prevHistory => ({
+      past: prevHistory.past.slice(0, -1),
+      future: [{
+        drawStrokes: drawStrokes,
+        notes: notes,
+      }, ...prevHistory.future]
+    }));
+    setDrawStrokes(prev.drawStrokes);
+    setNotes(prev.notes);
+  }, [history, drawStrokes, notes]);
+
+  const redo = useCallback(() => {
+    if (history.future.length === 0) return;
+    const next = history.future[0];
+    setHistory(prevHistory => ({
+      past: [...prevHistory.past, {
+        drawStrokes: drawStrokes,
+        notes: notes,
+      }],
+      future: prevHistory.future.slice(1)
+    }));
+    setDrawStrokes(next.drawStrokes);
+    setNotes(next.notes);
+  }, [history, drawStrokes, notes]);
+
+  const toggleDrawTool = useCallback(() => {
+    if (drawTool) {
+      setDrawTool(null);
+    } else {
+      setDrawTool(lastDrawTool);
+    }
+  }, [drawTool, lastDrawTool]);
+
+  const toggleMorphism = useCallback(() => {
+    if (activeMorphismId !== null) {
+      setActiveMorphismId(null);
+    } else if (morphisms.length > 0) {
+      const lastId = morphisms[morphisms.length - 1].id;
+      setActiveMorphismId(lastId);
+    }
+  }, [activeMorphismId, morphisms]);
+
+  const createMorphismFromNode = useCallback((latticeId, nodeId) => {
+    const id = Date.now();
+    const color = MORPHISM_COLORS[morphisms.length % MORPHISM_COLORS.length];
+    const newM = { id, name: `φ${morphisms.length + 1}`, color, strands: [] };
+    setMorphisms(prev => [...prev, newM]);
+    setActiveMorphismId(id);
+    strandDragging.current = { fromLatticeId: latticeId, fromNodeId: nodeId };
+  }, [morphisms]);
+
+  const startRectSelect = useCallback((x, y) => {
+    setRectSelectActive(true);
+    setRectStart({ x, y });
+    setRectEnd({ x, y });
+  }, []);
+
+  const updateRectSelect = useCallback((x, y) => {
+    if (!rectSelectActive) return;
+    setRectEnd({ x, y });
+  }, [rectSelectActive]);
+
+  const finishRectSelect = useCallback(() => {
+    if (!rectSelectActive || !rectStart || !rectEnd) return;
+    const minX = Math.min(rectStart.x, rectEnd.x);
+    const maxX = Math.max(rectStart.x, rectEnd.x);
+    const minY = Math.min(rectStart.y, rectEnd.y);
+    const maxY = Math.max(rectStart.y, rectEnd.y);
+    const newSelection = {};
+    latticeViews.forEach(({ entry, nodes }) => {
+      const selectedIds = nodes
+        .filter(n => n.x >= minX && n.x <= maxX && n.y >= minY && n.y <= maxY)
+        .map(n => n.id);
+      if (selectedIds.length) {
+        newSelection[entry.id] = new Set(selectedIds);
+      }
+    });
+    setSelectedNodes(newSelection);
+    setRectSelectActive(false);
+    setRectStart(null);
+    setRectEnd(null);
+  }, [rectSelectActive, rectStart, rectEnd, latticeViews]);
+
+  const scaleSelectedNodes = useCallback((factor) => {
+    const newStyles = { ...nodeCustomStyles };
+    for (const [lid, nodeSet] of Object.entries(selectedNodes)) {
+      const entry = lattices.find(l => l.id === Number(lid));
+      if (!entry) continue;
+      const nodes = resolveNodes(entry);
+      for (const nid of nodeSet) {
+        const node = nodes.find(n => n.id === nid);
+        if (!node) continue;
+        const key = `${lid}:${nid}`;
+        const current = newStyles[key] || {};
+        const oldScale = current.scale || 1;
+        const newScale = Math.max(0.2, Math.min(3, oldScale * factor));
+        newStyles[key] = { ...current, scale: newScale };
+      }
+    }
+    setNodeCustomStyles(newStyles);
+  }, [selectedNodes, lattices, nodeCustomStyles]);
+
+  const handleLoadState = useCallback((restored) => {
+    setLattices(restored.lattices);
+    setMorphisms(restored.morphisms);
+    setNotes(restored.notes);
+    setDrawStrokes(restored.drawStrokes);
+    setNodeCustomStyles(restored.nodeCustomStyles);
+    setGridSettings(restored.gridSettings);
+    setCamera(restored.camera);
+    setSettingsOpen(false);
+  }, []);
+
+  // ── Node mouse-down ───────────────────────────────────────────────
   const onNodeMouseDown = useCallback((latticeId, nodeId, e) => {
-    console.log('🖱️ MouseDown on node:', { latticeId, nodeId });
+    // --- Tab+click: create new morphism from this node ---
+    if (tabPressed.current && activeMorphismId === null) {
+      e.preventDefault();
+      e.stopPropagation();
+      createMorphismFromNode(latticeId, nodeId);
+      return;
+    }
+
     if (activeMorphismId !== null) {
       e.preventDefault(); e.stopPropagation();
       didDrag.current = false; didDragRef.current = false;
@@ -3975,7 +3975,6 @@ export default function App() {
       return;
     }
     
-    // Check if this specific node is selected
     const latticeSelection = selectedNodes[latticeId] || new Set();
     if (!latticeSelection.has(nodeId)) return;
     
@@ -3986,10 +3985,9 @@ export default function App() {
     const nodes = resolveNodes(entry);
     const startPositions = {};
     
-    // Iterate through all selected nodes across all lattices
     for (const [lid, nodeSet] of Object.entries(selectedNodes)) {
       const lidNum = Number(lid);
-      if (lidNum !== latticeId) continue; // Only drag nodes from the same lattice
+      if (lidNum !== latticeId) continue;
       
       for (const nid of nodeSet) {
         const n = nodes.find(n => n.id === nid);
@@ -4004,7 +4002,7 @@ export default function App() {
     
     nodeDragging.current = { latticeId, startMouseX: e.clientX, startMouseY: e.clientY, startPositions };
     mouseDownPos.current = { x: e.clientX, y: e.clientY };
-  }, [lattices, selectedNodes, activeMorphismId]);
+  }, [lattices, selectedNodes, activeMorphismId, createMorphismFromNode]);
 
   const onEpicenterMouseDown = useCallback((latticeId, e) => {
     e.preventDefault(); e.stopPropagation();
@@ -4020,22 +4018,30 @@ export default function App() {
   useEffect(() => { placingLatticeRef.current = placingLattice; }, [placingLattice]);
 
   const onCanvasMouseDown = useCallback((e) => {
-    // Middle mouse always pans regardless of active tool
+    // --- Right-click: toggle draw tool ---
+    if (e.button === 2) {
+      e.preventDefault();
+      if (e.altKey) {
+        const rect = panelRef.current?.getBoundingClientRect();
+        const cam = cameraRef.current;
+        const wx = (e.clientX - rect.left - cam.tx) / cam.scale;
+        const wy = (e.clientY - rect.top - cam.ty) / cam.scale;
+        startRectSelect(wx, wy);
+        return;
+      }
+      toggleDrawTool();
+      return;
+    }
+
+    // --- Middle-click: toggle morphism ---
     if (e.button === 1) {
       e.preventDefault();
-      didDrag.current = false; didDragRef.current = false;
-      isPanning.current = true;
-      mouseDownPos.current = { x: e.clientX, y: e.clientY };
-      panStart.current = { mouseX: e.clientX, mouseY: e.clientY, tx: cameraRef.current.tx, ty: cameraRef.current.ty };
-      document.body.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
+      toggleMorphism();
       return;
     }
 
     if (e.target.closest && (e.target.closest("g[data-node]") || e.target.closest("g[data-epicenter]"))) return;
-    // Note drag handled via note element's own onMouseDown — skip here if on a note
     if (e.target.closest && e.target.closest("[data-note]")) return;
-    // Cancel button — skip placement
     if (e.target.closest && e.target.closest("[data-cancel]")) return;
 
     if (placingLatticeRef.current) {
@@ -4051,7 +4057,6 @@ export default function App() {
       return;
     }
 
-    // ── Drawing tools ─────────────────────────────────────────────
     if (drawToolRef.current && drawToolRef.current !== "eraser") {
       e.preventDefault();
       const rect = panelRef.current?.getBoundingClientRect();
@@ -4081,7 +4086,7 @@ export default function App() {
     panStart.current = { mouseX: e.clientX, mouseY: e.clientY, tx: cameraRef.current.tx, ty: cameraRef.current.ty };
     document.body.style.cursor = "grabbing";
     document.body.style.userSelect = "none";
-  }, [placeLatticeAt, drawColor, drawSize]);
+  }, [placeLatticeAt, drawColor, drawSize, toggleDrawTool, toggleMorphism, startRectSelect]);
 
   // ── Global mouse move / up ────────────────────────────────────────
   useEffect(() => {
@@ -4091,7 +4096,6 @@ export default function App() {
         const dx = e.clientX - mouseDownPos.current.x, dy = e.clientY - mouseDownPos.current.y;
         if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) { didDrag.current = true; didDragRef.current = true; }
       }
-      // Ghost preview tracking
       if (placingLatticeRef.current) {
         const rect = panelRef.current?.getBoundingClientRect();
         if (rect) setGhostMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -4104,17 +4108,57 @@ export default function App() {
         const rect = panelRef.current?.getBoundingClientRect();
         setStrandPreview(prev => prev ? { ...prev, x2: e.clientX - (rect?.left ?? 0), y2: e.clientY - (rect?.top ?? 0) } : null);
       }
+
+      // Rectangle selection
+      if (rectSelectActive) {
+        const rect = panelRef.current?.getBoundingClientRect();
+        const cam = cameraRef.current;
+        const wx = (e.clientX - rect.left - cam.tx) / cam.scale;
+        const wy = (e.clientY - rect.top - cam.ty) / cam.scale;
+        updateRectSelect(wx, wy);
+      }
+
       if (nodeDragging.current) {
         const { latticeId, startMouseX, startMouseY, startPositions } = nodeDragging.current;
         const dx = (e.clientX - startMouseX) / cameraRef.current.scale;
         const dy = (e.clientY - startMouseY) / cameraRef.current.scale;
-        setLattices(prev => prev.map(l => {
-          if (l.id !== latticeId) return l;
-          const next = { ...l.nodePositions };
-          Object.entries(startPositions).forEach(([nid, { x, y }]) => { next[nid] = { x: x + dx, y: y + dy }; });
-          return { ...l, nodePositions: next };
-        }));
+
+        if (e.altKey) {
+          // Move ALL selected nodes (across all lattices)
+          const newPositions = {};
+          for (const [lid, nodeSet] of Object.entries(selectedNodes)) {
+            const entry = lattices.find(l => l.id === Number(lid));
+            if (!entry) continue;
+            const nodes = resolveNodes(entry);
+            for (const nid of nodeSet) {
+              const n = nodes.find(n => n.id === nid);
+              if (n) {
+                const oldX = entry.nodePositions[nid]?.x ?? (n.x - entry.epicenter.x + entry.base.W / 2);
+                const oldY = entry.nodePositions[nid]?.y ?? (n.y - entry.epicenter.y + entry.base.H / 2);
+                if (!newPositions[lid]) newPositions[lid] = {};
+                newPositions[lid][nid] = { x: oldX + dx, y: oldY + dy };
+              }
+            }
+          }
+          setLattices(prev => prev.map(l => {
+            if (newPositions[l.id]) {
+              return { ...l, nodePositions: { ...l.nodePositions, ...newPositions[l.id] } };
+            }
+            return l;
+          }));
+        } else {
+          // Original behaviour: only move nodes from the same lattice
+          setLattices(prev => prev.map(l => {
+            if (l.id !== latticeId) return l;
+            const next = { ...l.nodePositions };
+            Object.entries(startPositions).forEach(([nid, { x, y }]) => {
+              next[nid] = { x: x + dx, y: y + dy };
+            });
+            return { ...l, nodePositions: next };
+          }));
+        }
       }
+
       if (epicenterDragging.current) {
         const { latticeId, startMouseX, startMouseY, startEpicenter } = epicenterDragging.current;
         const dx = (e.clientX - startMouseX) / cameraRef.current.scale;
@@ -4123,14 +4167,14 @@ export default function App() {
           l.id !== latticeId ? l : { ...l, epicenter: { x: startEpicenter.x + dx, y: startEpicenter.y + dy } }
         ));
       }
-      // ── Note dragging ──
+
       if (noteDragging.current) {
         const { id, startMx, startMy, startX, startY } = noteDragging.current;
         const dx = (e.clientX - startMx) / cameraRef.current.scale;
         const dy = (e.clientY - startMy) / cameraRef.current.scale;
         setNotes(prev => prev.map(n => n.id === id ? { ...n, x: startX + dx, y: startY + dy } : n));
       }
-      // ── Drawing ──
+
       if (isDrawing.current && currentStroke.current) {
         const rect = panelRef.current?.getBoundingClientRect();
         const cam = cameraRef.current;
@@ -4153,6 +4197,7 @@ export default function App() {
           });
         }
       }
+
       if (isDrawing.current && drawToolRef.current === "eraser") {
         const rect = panelRef.current?.getBoundingClientRect();
         const cam = cameraRef.current;
@@ -4165,6 +4210,7 @@ export default function App() {
           return Math.hypot(cx - wx, cy - wy) >= R;
         }));
       }
+
       if (leftSplitDragging.current) {
         const delta = e.clientX - leftSplitStart.current; leftSplitStart.current = e.clientX;
         setLeftW(w => { const next = w + delta; if (next < 60) { leftWBeforeCollapse.current = Math.max(w, 200); setLeftCollapsed(true); return 0; } setLeftCollapsed(false); return Math.min(500, next); });
@@ -4174,7 +4220,13 @@ export default function App() {
         setRightW(w => { const next = w - delta; if (next < 60) { rightWBeforeCollapse.current = Math.max(w, 220); setRightCollapsed(true); return 0; } setRightCollapsed(false); return Math.min(520, next); });
       }
     };
+
     const onUp = (e) => {
+      // Finish rectangle selection
+      if (rectSelectActive) {
+        finishRectSelect();
+      }
+
       if (strandDragging.current && activeMorphismIdRef.current !== null) {
         const { fromLatticeId, fromNodeId } = strandDragging.current;
         let el = e.target;
@@ -4183,46 +4235,45 @@ export default function App() {
           el = el.parentElement;
         }
         if (el && el.getAttribute("data-node") === "true") {
-          const rawLatticeId = el.getAttribute("data-lattice-id");
-          const rawNodeId = el.getAttribute("data-node-id");
-          
-          // ✅ MUST use Number(), NOT parseInt()
-          const toLatticeId = parseFloat(el.getAttribute("data-lattice-id"));
-          const toNodeId = parseFloat(el.getAttribute("data-node-id"));
-
-          console.log('🔍 Strand drop target:', {
-            element: el,
-            rawLatticeId,
-            rawNodeId,
-            parsedLatticeId: toLatticeId,
-            parsedNodeId: toNodeId,
-            isValid: !isNaN(toLatticeId) && !isNaN(toNodeId)
-          });
+          const toLatticeId = Number(el.getAttribute("data-lattice-id"));
+          const toNodeId = Number(el.getAttribute("data-node-id"));
 
           if (!isNaN(toLatticeId) && !isNaN(toNodeId) && !(toLatticeId === fromLatticeId && toNodeId === fromNodeId)) {
+            // Single strand
             const sid = Date.now() + Math.random();
             setMorphisms(prev => prev.map(m =>
               m.id !== activeMorphismIdRef.current ? m : {
                 ...m, strands: [...m.strands, { id: sid, fromLatticeId, fromNodeId, toLatticeId, toNodeId }]
               }
             ));
+
+            // Batch strands from all selected nodes of the same source lattice
+            if (batchStrandActive) {
+              const sourceNodeSet = selectedNodes[fromLatticeId] || new Set();
+              const selectedNodeIds = [...sourceNodeSet].filter(id => id !== fromNodeId);
+              for (const nid of selectedNodeIds) {
+                const sidBatch = Date.now() + Math.random();
+                setMorphisms(prev => prev.map(m =>
+                  m.id !== activeMorphismIdRef.current ? m : {
+                    ...m, strands: [...m.strands, { id: sidBatch, fromLatticeId, fromNodeId: nid, toLatticeId, toNodeId }]
+                  }
+                ));
+              }
+            }
           }
         }
         strandDragging.current = null;
         setStrandPreview(null);
       }
-      // Commit finished stroke
+
       if (isDrawing.current && currentStroke.current && drawToolRef.current !== "eraser") {
         const s = currentStroke.current;
         const isPerm = drawPermRef.current;
         if (!isPerm) {
-          // Temporary stroke: remove it immediately on mouse-up
           setDrawStrokes(prev => prev.filter(x => x.id !== s.id));
         } else if (s.tool === "pen" && s.points.length < 2) {
-          // Tiny dot — remove
           setDrawStrokes(prev => prev.filter(x => x.id !== s.id));
         } else {
-          // Permanent: finalize and keep
           const finalStroke = { ...s, permanent: true };
           setDrawStrokes(prev => {
             const idx = prev.findIndex(x => x.id === finalStroke.id);
@@ -4242,12 +4293,13 @@ export default function App() {
       if (leftSplitDragging.current) { leftSplitDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; }
       if (rightSplitDragging.current) { rightSplitDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; }
     };
+
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-  }, []);
+  }, [selectedNodes, lattices, finishRectSelect, updateRectSelect, batchStrandActive]);
 
-  // ── Middle-mouse pan — fires even over nodes/SVG elements ─────────
+  // ── Middle-mouse pan ──────────────────────────────────────────────
   useEffect(() => {
     const onMiddleDown = (e) => {
       if (e.button !== 1) return;
@@ -4283,10 +4335,91 @@ export default function App() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [onWheel]);
 
-  // ── Escape key — clears draw tool, editing note, placing ─────────
+  // ── Keyboard shortcuts ──────────────────────────────────────────────
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") {
+    const onKeyDown = (e) => {
+      // --- Sequence handling (Shift+D, Shift+G) ---
+      if (e.key === 'Shift') {
+        setBatchStrandActive(true);
+      }
+      if (e.key === 'D' && e.shiftKey) {
+        setIsKeySequenceActive(true);
+        setSequenceBuffer('D');
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'G' && e.shiftKey) {
+        setIsKeySequenceActive(true);
+        setSequenceBuffer('G');
+        e.preventDefault();
+        return;
+      }
+
+      if (isKeySequenceActive) {
+        if (sequenceBuffer === 'D' && e.key >= '0' && e.key <= '9') {
+          const toolMap = {
+            '0': 'eraser',
+            '9': 'pen',
+            '8': 'line',
+            '7': 'arrow-end',
+            '6': 'arrow-start',
+            '5': 'arrow-both',
+            '4': 'rect',
+            '3': 'circle',
+          };
+          const tool = toolMap[e.key];
+          if (tool) {
+            setDrawTool(tool);
+            setLastDrawTool(tool);
+          }
+          setIsKeySequenceActive(false);
+          setSequenceBuffer('');
+          e.preventDefault();
+          return;
+        }
+        if (sequenceBuffer === 'G') {
+          switch (e.key.toLowerCase()) {
+            case 'r': {
+              const graphNames = lattices
+                .filter(l => selectedNodes[l.id] && selectedNodes[l.id].size > 0)
+                .map(l => l.label);
+              const newName = prompt(`Rename graphs (${graphNames.join(', ')}):`, graphNames[0] || '');
+              if (newName !== null) {
+                setLattices(prev => prev.map(l =>
+                  selectedNodes[l.id] && selectedNodes[l.id].size > 0 ? { ...l, label: newName } : l
+                ));
+              }
+              break;
+            }
+            case 'n': {
+              lattices.forEach(l => {
+                if (selectedNodes[l.id] && selectedNodes[l.id].size > 0) {
+                  addNote(l.epicenter.x, l.epicenter.y);
+                }
+              });
+              break;
+            }
+            case 'a': {
+              setLattices(prev => prev.map(l => ({ ...l, showArrows: !l.showArrows })));
+              break;
+            }
+            case 'e': {
+              setLattices(prev => prev.map(l => ({ ...l, showEdges: !l.showEdges })));
+              break;
+            }
+            default:
+              break;
+          }
+          setIsKeySequenceActive(false);
+          setSequenceBuffer('');
+          e.preventDefault();
+          return;
+        }
+        setIsKeySequenceActive(false);
+        setSequenceBuffer('');
+      }
+
+      if (e.key === 'Escape') {
         if (drawTool) setLastDrawTool(drawTool);
         setDrawTool(null);
         setColorPopOpen(false);
@@ -4298,136 +4431,106 @@ export default function App() {
         setEditingNoteId(null);
         setPlacingLattice(null);
         setGhostMousePos(null);
+        e.preventDefault();
+        return;
+      }
+
+      if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        undo();
+      }
+      if (e.ctrlKey && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        if (panelRef.current) {
+          const r = panelRef.current.getBoundingClientRect();
+          const cam = cameraRef.current;
+          const wx = (r.width / 2 - cam.tx) / cam.scale;
+          const wy = (r.height / 2 - cam.ty) / cam.scale;
+          addNote(wx, wy);
+        }
+      }
+      if (e.ctrlKey && e.key === 'p') {
+        e.preventDefault();
+        alert('PNG export would happen here');
+      }
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        alert('Save state would happen here');
+      }
+
+      if (e.altKey && e.key === 'r') {
+        e.preventDefault();
+        const names = morphisms.filter(m => activeMorphismId === m.id || selectedMorphismNodes.has(m.id)).map(m => m.name);
+        const newName = prompt(`Rename selected morphisms (${names.join(', ')}):`, names[0] || '');
+        if (newName !== null) {
+          setMorphisms(prev => prev.map(m =>
+            (activeMorphismId === m.id || selectedMorphismNodes.has(m.id)) ? { ...m, name: newName } : m
+          ));
+        }
+      }
+      if (e.shiftKey && e.key === 'r') {
+        e.preventDefault();
+        const selectedNodeLabels = allSelectedNodes.map(({ node }) => node.shortLabel);
+        const newName = prompt(`Rename selected nodes (${selectedNodeLabels.join(', ')}):`, selectedNodeLabels[0] || '');
+        if (newName !== null) {
+          const newStyles = { ...nodeCustomStyles };
+          allSelectedNodes.forEach(({ latticeId, node }) => {
+            const key = `${latticeId}:${node.id}`;
+            newStyles[key] = { ...(newStyles[key] || {}), labelAlias: newName };
+          });
+          setNodeCustomStyles(newStyles);
+        }
+      }
+
+      if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
+        e.preventDefault();
+        scaleSelectedNodes(1.1);
+      }
+      if (e.ctrlKey && e.key === '-') {
+        e.preventDefault();
+        scaleSelectedNodes(0.9);
+      }
+
+      if (e.key === 'Tab') {
+        tabPressed.current = true;
+        e.preventDefault();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  const toggleLeft = () => {
-    if (leftCollapsed) { setLeftW(leftWBeforeCollapse.current); setLeftCollapsed(false); }
-    else { leftWBeforeCollapse.current = leftW; setLeftW(0); setLeftCollapsed(true); }
-  };
-  const toggleRight = () => {
-    if (rightCollapsed) { setRightW(rightWBeforeCollapse.current); setRightCollapsed(false); }
-    else { rightWBeforeCollapse.current = rightW; setRightW(0); setRightCollapsed(true); }
-  };
 
-  const onLeftSplit12 = useCallback((delta, h) => {
-    if (!leftPane1Open || !leftPane2Open) return;
-    const ratio = delta / (h || 600);
-    const totalFlex = leftPane1Flex + leftPane2Flex;
-    setLeftPane1Flex(f => Math.max(0.1, f + ratio * totalFlex));
-    setLeftPane2Flex(f => Math.max(0.1, f - ratio * totalFlex));
-  }, [leftPane1Open, leftPane2Open, leftPane1Flex, leftPane2Flex]);
-  const onLeftSplit23 = useCallback((delta, h) => {
-    if (!leftPane2Open || !leftPane3Open) return;
-    const ratio = delta / (h || 600);
-    const totalFlex = leftPane2Flex + leftPane3Flex;
-    setLeftPane2Flex(f => Math.max(0.1, f + ratio * totalFlex));
-    setLeftPane3Flex(f => Math.max(0.1, f - ratio * totalFlex));
-  }, [leftPane2Open, leftPane3Open, leftPane2Flex, leftPane3Flex]);
-  const onRightSplit12 = useCallback((delta, h) => {
-    if (!rightPane1Open || !rightPane2Open) return;
-    const ratio = delta / (h || 600);
-    const totalFlex = rightPane1Flex + rightPane2Flex;
-    setRightPane1Flex(f => Math.max(0.1, f + ratio * totalFlex));
-    setRightPane2Flex(f => Math.max(0.1, f - ratio * totalFlex));
-  }, [rightPane1Open, rightPane2Open, rightPane1Flex, rightPane2Flex]);
-  const onRightSplit23 = useCallback((delta, h) => {
-    if (!rightPane2Open || !rightPane3Open) return;
-    const ratio = delta / (h || 600);
-    const totalFlex = rightPane2Flex + rightPane3Flex;
-    setRightPane2Flex(f => Math.max(0.1, f + ratio * totalFlex));
-    setRightPane3Flex(f => Math.max(0.1, f - ratio * totalFlex));
-  }, [rightPane2Open, rightPane3Open, rightPane2Flex, rightPane3Flex]);
-
-  const toggleNodeSelect = useCallback((latticeId, nodeId) => {
-    setSelectedNodes(prev => {
-      const latticeSelection = prev[latticeId] || new Set();
-      const next = new Set(latticeSelection);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
+    const onKeyUp = (e) => {
+      if (e.key === 'Shift') {
+        setBatchStrandActive(false);
       }
-      if (next.size === 0) {
-        const { [latticeId]: _, ...rest } = prev;
-        return rest;
+      if (e.key === 'Tab') {
+        tabPressed.current = false;
       }
-      return { ...prev, [latticeId]: next };
-    });
-    setSelectedGraphId(latticeId);
-  }, []);
+    };
 
-  const isNodeSelected = useCallback((latticeId, nodeId) => {
-    return selectedNodes[latticeId]?.has(nodeId) || false;
-  }, [selectedNodes]);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [
+    drawTool, lastDrawTool, undo, redo, addNote, morphisms, activeMorphismId,
+    selectedMorphismNodes, allSelectedNodes, nodeCustomStyles, setNodeCustomStyles,
+    setLattices, setDrawStrokes, scaleSelectedNodes, lattices, selectedNodes,
+    isKeySequenceActive, sequenceBuffer, panelRef, cameraRef, setDrawTool,
+    setColorPopOpen, setDrawMenuOpen, setDrawMenuHovered, setMorphBtnOpen,
+    setMorphBtnHovered, setEditingNoteId, setPlacingLattice, setGhostMousePos
+  ]);
 
-  const handleLoadState = useCallback((restored) => {
-    setLattices(restored.lattices);
-    setMorphisms(restored.morphisms);
-    setNotes(restored.notes);
-    setDrawStrokes(restored.drawStrokes);
-    setNodeCustomStyles(restored.nodeCustomStyles);
-    setGridSettings(restored.gridSettings);
-    setCamera(restored.camera);
-    setSettingsOpen(false);
-  }, []);
-
-  // ── Derived views ─────────────────────────────────────────────────
-  const latticeViews = lattices.map((entry, idx) => {
-    const rawNodes = resolveNodes(entry);
-    // Apply any custom style overrides (color, labelAlias)
-    const nodes = rawNodes.map(n => {
-      const style = nodeCustomStyles[`${entry.id}:${n.id}`];
-      if (!style) return n;
-      return {
-        ...n,
-        ...(style.color ? { _customColor: style.color } : {}),
-        ...(style.labelAlias ? { shortLabel: style.labelAlias } : {}),
-      };
-    });
-    const colorMap = buildOrderColorMap(nodes);
-    // For stats: always use the real (non-collapsed) base for order/counts
-    const statsBase = entry.base;
-    const fullNode = entry.isCollapsed
-      ? statsBase.nodes[statsBase.nodes.length - 1] ?? null
-      : nodes[nodes.length - 1] ?? null;
-    const accent = LATTICE_ACCENTS[idx % LATTICE_ACCENTS.length];
-    const hlEdgeSet = new Set();
-    const adjacentNodes = new Set();
-    // Only highlight edges when not collapsed
-    if (!entry.isCollapsed) {
-      entry.base.edges.forEach(([a, b], i) => {
-        const ka = `${entry.id}:${a}`, kb = `${entry.id}:${b}`;
-        if (isNodeSelected(entry.id, a) || isNodeSelected(entry.id, b)) { hlEdgeSet.add(i); adjacentNodes.add(a); adjacentNodes.add(b); }
-      });
-    }
-    const unElems = entry.base.labels?.map((l, i) => ({ i, v: parseInt(l) })).filter(x => !isNaN(x.v) && entry.kind === "Un");
-    const zParts = entry.kind === "Un" ? zStructureParts(entry.param) : [];
-    const expVal = entry.kind === "Un" && unElems ? groupExponent(unElems.map(x => x.v).filter(v => v > 0), entry.param) : "—";
-    return { entry, nodes, colorMap, fullNode, statsBase, accent, hlEdgeSet, adjacentNodes, zParts, expVal };
-  });
-
-  const allSelectedNodes = latticeViews.flatMap(({ entry, nodes, colorMap, fullNode }) => {
-    const latticeSelectedNodes = selectedNodes[entry.id] || new Set();
-    return [...latticeSelectedNodes].map(nodeId => {
-      const node = nodes.find(n => n.id === nodeId);
-      if (!node) return null;
-      const indexVal = (fullNode && fullNode.order % node.order === 0) ? fullNode.order / node.order : "—";
-      return { node, colorMap, latticeId: entry.id, latticeLabel: entry.label, indexVal, entry };
-    }).filter(Boolean);
-  });
-
-  const totalSelected = Object.values(selectedNodes).reduce((sum, set) => sum + set.size, 0);
+  // ── Derived views ────────────────────────────────────────────────
 
   const actualLeftW = leftCollapsed ? 0 : leftW;
   const actualRightW = rightCollapsed ? 0 : rightW;
 
-  // ═════════════════════════════════════════════════════════════════
-  //  RENDER
-  // ═════════════════════════════════════════════════════════════════
-
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <div ref={containerRef} style={{
       width: "100%", height: "100vh", display: "flex", overflow: "hidden",
@@ -4456,7 +4559,6 @@ export default function App() {
         />
       )}
 
-      {/* ── Settings Modal ── */}
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -4472,9 +4574,7 @@ export default function App() {
         onLoadState={handleLoadState}
       />
 
-      {/* ══════════════════════════════════════════════════════
-          LEFT PANEL
-      ══════════════════════════════════════════════════════ */}
+      {/* LEFT PANEL */}
       <div ref={leftPanelRef} style={{
         width: actualLeftW, flexShrink: 0, height: "100%",
         display: "flex", flexDirection: "column",
@@ -4487,342 +4587,323 @@ export default function App() {
 
         {actualLeftW > 40 && (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", clipPath: "inset(0)" }}>
-          {/* Pane 1: Graph Catalog (categories → groups → views) */}
-          <Pane title="Graph Catalog" open={leftPane1Open} onToggle={() => setLeftPane1Open(o => !o)} flex={leftPane1Flex} scrollClass="sky-scroll-left">
-            <div style={{ margin: "-12px -14px" }}>
-              {LATTICE_CATEGORIES.map(category => (
-                <Section key={category.key} label={category.label} depth={0} defaultOpen={false}
-                  badge={`${category.groups.reduce((s, g) => s + g.views.length, 0)}`}>
-                  <SectionBody>
-                    <div style={{ fontSize: 8, color: C.inkFaint, letterSpacing: 1, lineHeight: 1.6 }}>{category.desc}</div>
-                  </SectionBody>
-                  {category.groups.map(group => {
-                    const param  = catalogParams[group.key]  ?? group.paramDefault;
-                    const param2 = catalogParams2[group.key] ?? group.paramDefault2;
-                    const param3 = catalogParams3[group.key] ?? group.paramDefault3;
-                    const activeViewKey = selectedViews[group.key] ?? group.views[0].key;
-                    const isPlacing = placingLattice?.groupKey === group.key;
+            <Pane title="Graph Catalog" open={leftPane1Open} onToggle={() => setLeftPane1Open(o => !o)} flex={leftPane1Flex} scrollClass="sky-scroll-left">
+              <div style={{ margin: "-12px -14px" }}>
+                {LATTICE_CATEGORIES.map(category => (
+                  <Section key={category.key} label={category.label} depth={0} defaultOpen={false}
+                    badge={`${category.groups.reduce((s, g) => s + g.views.length, 0)}`}>
+                    <SectionBody>
+                      <div style={{ fontSize: 8, color: C.inkFaint, letterSpacing: 1, lineHeight: 1.6 }}>{category.desc}</div>
+                    </SectionBody>
+                    {category.groups.map(group => {
+                      const param  = catalogParams[group.key]  ?? group.paramDefault;
+                      const param2 = catalogParams2[group.key] ?? group.paramDefault2;
+                      const param3 = catalogParams3[group.key] ?? group.paramDefault3;
+                      const activeViewKey = selectedViews[group.key] ?? group.views[0].key;
+                      const isPlacing = placingLattice?.groupKey === group.key;
 
-                    return (
-                      <Section key={group.key} label={group.label} depth={1} defaultOpen={false}
-                        badge={group.views.length > 1 ? `${group.views.length} views` : undefined}>
+                      return (
+                        <Section key={group.key} label={group.label} depth={1} defaultOpen={false}
+                          badge={group.views.length > 1 ? `${group.views.length} views` : undefined}>
 
-                        {/* Param inputs */}
-                        {(group.hasParam || group.hasParam2 || group.hasParam3) && (
-                          <SectionBody>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                              {group.hasParam && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1 }}>{group.paramLabel}</span>
-                                  <input type="number" value={param} min={group.paramMin} max={group.paramMax}
-                                    onChange={e => setCatalogParams(prev => ({ ...prev, [group.key]: parseInt(e.target.value) || group.paramDefault }))}
-                                    style={{ width: 44, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 5px", textAlign: "center", fontFamily: "'Courier New', monospace", outline: "none" }} />
-                                </div>
-                              )}
-                              {group.hasParam2 && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1 }}>{group.paramLabel2}</span>
-                                  <input type="number" value={param2} min={group.paramMin2} max={group.paramMax2}
-                                    onChange={e => setCatalogParams2(prev => ({ ...prev, [group.key]: parseInt(e.target.value) || group.paramDefault2 }))}
-                                    style={{ width: 44, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 5px", textAlign: "center", fontFamily: "'Courier New', monospace", outline: "none" }} />
-                                </div>
-                              )}
-                              {group.hasParam3 && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1 }}>{group.paramLabel3}</span>
-                                  <input type="number" value={param3} min={group.paramMin3} max={group.paramMax3}
-                                    onChange={e => setCatalogParams3(prev => ({ ...prev, [group.key]: parseInt(e.target.value) || group.paramDefault3 }))}
-                                    style={{ width: 44, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 5px", textAlign: "center", fontFamily: "'Courier New', monospace", outline: "none" }} />
-                                </div>
-                              )}
-                            </div>
-                          </SectionBody>
-                        )}
-
-                        {/* Single element label input */}
-                        {group.isSingle && (
-                          <SectionBody>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1, flexShrink: 0 }}>Label</span>
-                              <input
-                                value={singleElementLabel}
-                                onChange={e => setSingleElementLabel(e.target.value.slice(0, 12))}
-                                placeholder="a"
-                                style={{ flex: 1, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 7px", fontFamily: "'Courier New', monospace", outline: "none" }}
-                              />
-                            </div>
-                          </SectionBody>
-                        )}
-
-                        {/* View selector rows */}
-                        {group.views.map(view => {
-                          const isActiveView = activeViewKey === view.key;
-                          const isThisPlacing = isPlacing && placingLattice?.viewKey === view.key;
-                          return (
-                            <div key={view.key} style={{
-                              display: "flex", alignItems: "center", gap: 8,
-                              padding: "6px 12px",
-                              borderBottom: `1px solid ${C.border}`,
-                              background: isThisPlacing ? C.selectedBg : isActiveView ? "rgba(0,0,0,0.04)" : "transparent",
-                              transition: "background 0.1s",
-                            }}>
-                              <div onClick={() => setSelectedViews(prev => ({ ...prev, [group.key]: view.key }))}
-                                style={{
-                                  width: 9, height: 9, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
-                                  border: `2px solid ${C.inkMid}`,
-                                  background: isActiveView ? C.inkMid : "transparent",
-                                  transition: "background 0.15s",
-                                }} />
-                              <span style={{ flex: 1, fontSize: 10, color: isActiveView ? C.ink : C.inkFaint, fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>
-                                {view.label}
-                              </span>
-                              <button title={`Place ${group.label} — ${view.label}`}
-                                onClick={() => {
-                                  try {
-                                    if (group.isRaw) { setShowRawModal(true); return; }
-                                    const p  = group.hasParam  ? (param  || group.paramDefault)  : group.paramDefault;
-                                    const p2 = group.hasParam2 ? (param2 || group.paramDefault2) : undefined;
-                                    const p3 = group.hasParam3 ? (param3 || group.paramDefault3) : undefined;
-                                    const base = group.isSingle ? view.build(null, singleElementLabel || "a") : view.build(p, p2, p3);
-                                    const viewSuffix = view.key !== "hasse" ? ` [${view.label}]` : "";
-                                    const SUB = "₀₁₂₃₄₅₆₇₈₉";
-                                    const sub = x => String(x).split("").map(d => SUB[parseInt(d)] ?? d).join("");
-                                    let lbl = group.isSingle ? (singleElementLabel || "a") : group.label;
-                                    if (group.hasParam)  lbl = lbl.replace(/ₙ/g, sub(p));
-                                    if (group.hasParam2) lbl = lbl.replace(/ₘ/g, sub(p2));
-                                    if (group.hasParam3) lbl = lbl.replace(/ₖ/g, sub(p3));
-                                    lbl = lbl + viewSuffix;
-                                    setError("");
-                                    setSelectedViews(prev => ({ ...prev, [group.key]: view.key }));
-                                    setPlacingLattice({ groupKey: group.key, viewKey: view.key, base, label: lbl, params: {param: p, param2: p2, param3: p3}});
-                                  } catch (err) { setError(String(err)); }
-                                }}
-                                style={{
-                                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-                                  background: isThisPlacing ? C.ink : C.panelSurface,
-                                  border: `1.5px solid ${isThisPlacing ? C.ink : C.border}`,
-                                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                                  color: isThisPlacing ? C.panelBg : C.inkMid, fontSize: 11, lineHeight: 1,
-                                  transition: "background 0.13s, border-color 0.13s",
-                                }}
-                                onMouseEnter={e => { if (!isThisPlacing) { e.currentTarget.style.background = C.borderHover; e.currentTarget.style.borderColor = C.borderHover; } }}
-                                onMouseLeave={e => { if (!isThisPlacing) { e.currentTarget.style.background = C.panelSurface; e.currentTarget.style.borderColor = C.border; } }}
-                              >☉</button>
-                            </div>
-                          );
-                        })}
-
-                        <SectionBody>
-                          <div style={{ fontSize: 8, color: C.inkFaint, letterSpacing: 1, lineHeight: 1.6 }}>{group.desc}</div>
-                        </SectionBody>
-                      </Section>
-                    );
-                  })}
-                </Section>
-              ))}
-            </div>
-            {error && <div style={{ color: "#f87171", fontSize: 10, margin: "8px 14px 0" }}>{error}</div>}
-          </Pane>
-
-          {leftPane1Open && leftPane2Open && <HPSplitter onDrag={onLeftSplit12} containerRef={leftPanelRef} />}
-
-          {/* Pane 2: Morphisms */}
-          <Pane title="Morphisms" open={leftPane2Open} onToggle={() => setLeftPane2Open(o => !o)} flex={leftPane2Flex} scrollClass="sky-scroll-left">
-            {morphisms.length === 0
-              ? <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic", padding: "4px 0" }}>No morphisms yet. Use the Ψ button on the canvas to create one.</div>
-              : <div style={{ margin: "-12px -14px" }}>
-
-                  {/* Individual morphisms — with radio select on the header row */}
-                  {morphisms.map(m => {
-                    const isActive = activeMorphismId === m.id;
-                    const isSelected = selectedMorphismNodes.has(m.id);
-                    const analysis = analyzeMorphism(m.strands, lattices, latticeViews);
-
-                    return (
-                      <Section key={m.id} label={m.name} depth={0} accent={m.color}
-                        badge={m.strands.length ? `${m.strands.length}s` : undefined}
-                        defaultOpen={false}
-                        rightExtra={
-                          /* Radio/checkbox to select this morphism for compose */
-                          <div title={isSelected ? "Deselect for compose" : "Select for compose"}
-                            onClick={e => { e.stopPropagation(); setSelectedMorphismNodes(prev => { const next = new Set(prev); next.has(m.id) ? next.delete(m.id) : next.add(m.id); return next; }); }}
-                            style={{
-                              width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                              border: `2px solid ${m.color}`,
-                              background: isSelected ? m.color : "transparent",
-                              cursor: "pointer", transition: "background 0.15s",
-                              marginRight: 4,
-                            }} />
-                        }>
-
-                        {/* ── Style (rename + color + active + description) ── */}
-                        <Section label="Style" depth={1} defaultOpen={false}>
-                          <SectionBody>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                              {/* Name row */}
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Name</span>
-                                <input value={m.name}
-                                  onChange={e => setMorphisms(prev => prev.map(mx => mx.id === m.id ? { ...mx, name: e.target.value } : mx))}
-                                  style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, color: C.ink, fontSize: 10, padding: "3px 6px", outline: "none", fontFamily: "'Courier New', monospace" }} />
+                          {(group.hasParam || group.hasParam2 || group.hasParam3) && (
+                            <SectionBody>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                {group.hasParam && (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1 }}>{group.paramLabel}</span>
+                                    <input type="number" value={param} min={group.paramMin} max={group.paramMax}
+                                      onChange={e => setCatalogParams(prev => ({ ...prev, [group.key]: parseInt(e.target.value) || group.paramDefault }))}
+                                      style={{ width: 44, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 5px", textAlign: "center", fontFamily: "'Courier New', monospace", outline: "none" }} />
+                                  </div>
+                                )}
+                                {group.hasParam2 && (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1 }}>{group.paramLabel2}</span>
+                                    <input type="number" value={param2} min={group.paramMin2} max={group.paramMax2}
+                                      onChange={e => setCatalogParams2(prev => ({ ...prev, [group.key]: parseInt(e.target.value) || group.paramDefault2 }))}
+                                      style={{ width: 44, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 5px", textAlign: "center", fontFamily: "'Courier New', monospace", outline: "none" }} />
+                                  </div>
+                                )}
+                                {group.hasParam3 && (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1 }}>{group.paramLabel3}</span>
+                                    <input type="number" value={param3} min={group.paramMin3} max={group.paramMax3}
+                                      onChange={e => setCatalogParams3(prev => ({ ...prev, [group.key]: parseInt(e.target.value) || group.paramDefault3 }))}
+                                      style={{ width: 44, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 5px", textAlign: "center", fontFamily: "'Courier New', monospace", outline: "none" }} />
+                                  </div>
+                                )}
                               </div>
-                              {/* Color row */}
+                            </SectionBody>
+                          )}
+
+                          {group.isSingle && (
+                            <SectionBody>
                               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Color</span>
-                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                  {MORPHISM_COLORS.map(col => (
-                                    <div key={col} onClick={() => setMorphisms(prev => prev.map(mx => mx.id === m.id ? { ...mx, color: col } : mx))}
-                                      style={{ width: 16, height: 16, borderRadius: "50%", background: col, cursor: "pointer", flexShrink: 0,
-                                        border: m.color === col ? `2.5px solid ${C.inkMid}` : `1.5px solid transparent`,
-                                        boxSizing: "border-box", transition: "border 0.1s" }} />
-                                  ))}
-                                </div>
+                                <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1, flexShrink: 0 }}>Label</span>
+                                <input
+                                  value={singleElementLabel}
+                                  onChange={e => setSingleElementLabel(e.target.value.slice(0, 12))}
+                                  placeholder="a"
+                                  style={{ flex: 1, background: C.bg, border: `1px solid ${C.borderHover}`, borderRadius: 3, color: C.ink, fontSize: 11, padding: "2px 7px", fontFamily: "'Courier New', monospace", outline: "none" }}
+                                />
                               </div>
-                              {/* Active toggle */}
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Active</span>
-                                <div title={isActive ? "Deactivate morphism" : "Activate to draw strands"}
-                                  onClick={() => setActiveMorphismId(isActive ? null : m.id)}
-                                  style={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                                    border: `2px solid ${m.color}`, background: isActive ? m.color : "transparent",
-                                    cursor: "pointer", transition: "background 0.15s" }} />
-                                {isActive && <span style={{ fontSize: 9, color: m.color, letterSpacing: 1, textTransform: "uppercase" }}>drawing strands</span>}
+                            </SectionBody>
+                          )}
+
+                          {group.views.map(view => {
+                            const isActiveView = activeViewKey === view.key;
+                            const isThisPlacing = isPlacing && placingLattice?.viewKey === view.key;
+                            return (
+                              <div key={view.key} style={{
+                                display: "flex", alignItems: "center", gap: 8,
+                                padding: "6px 12px",
+                                borderBottom: `1px solid ${C.border}`,
+                                background: isThisPlacing ? C.selectedBg : isActiveView ? "rgba(0,0,0,0.04)" : "transparent",
+                                transition: "background 0.1s",
+                              }}>
+                                <div onClick={() => setSelectedViews(prev => ({ ...prev, [group.key]: view.key }))}
+                                  style={{
+                                    width: 9, height: 9, borderRadius: "50%", flexShrink: 0, cursor: "pointer",
+                                    border: `2px solid ${C.inkMid}`,
+                                    background: isActiveView ? C.inkMid : "transparent",
+                                    transition: "background 0.15s",
+                                  }} />
+                                <span style={{ flex: 1, fontSize: 10, color: isActiveView ? C.ink : C.inkFaint, fontFamily: "'Courier New', monospace", letterSpacing: 1 }}>
+                                  {view.label}
+                                </span>
+                                <button title={`Place ${group.label} — ${view.label}`}
+                                  onClick={() => {
+                                    try {
+                                      if (group.isRaw) { setShowRawModal(true); return; }
+                                      const p  = group.hasParam  ? (param  || group.paramDefault)  : group.paramDefault;
+                                      const p2 = group.hasParam2 ? (param2 || group.paramDefault2) : undefined;
+                                      const p3 = group.hasParam3 ? (param3 || group.paramDefault3) : undefined;
+                                      const base = group.isSingle ? view.build(null, singleElementLabel || "a") : view.build(p, p2, p3);
+                                      const viewSuffix = view.key !== "hasse" ? ` [${view.label}]` : "";
+                                      const SUB = "₀₁₂₃₄₅₆₇₈₉";
+                                      const sub = x => String(x).split("").map(d => SUB[parseInt(d)] ?? d).join("");
+                                      let lbl = group.isSingle ? (singleElementLabel || "a") : group.label;
+                                      if (group.hasParam)  lbl = lbl.replace(/ₙ/g, sub(p));
+                                      if (group.hasParam2) lbl = lbl.replace(/ₘ/g, sub(p2));
+                                      if (group.hasParam3) lbl = lbl.replace(/ₖ/g, sub(p3));
+                                      lbl = lbl + viewSuffix;
+                                      setError("");
+                                      setSelectedViews(prev => ({ ...prev, [group.key]: view.key }));
+                                      setPlacingLattice({ groupKey: group.key, viewKey: view.key, base, label: lbl, params: {param: p, param2: p2, param3: p3}});
+                                    } catch (err) { setError(String(err)); }
+                                  }}
+                                  style={{
+                                    width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                                    background: isThisPlacing ? C.ink : C.panelSurface,
+                                    border: `1.5px solid ${isThisPlacing ? C.ink : C.border}`,
+                                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                                    color: isThisPlacing ? C.panelBg : C.inkMid, fontSize: 11, lineHeight: 1,
+                                    transition: "background 0.13s, border-color 0.13s",
+                                  }}
+                                  onMouseEnter={e => { if (!isThisPlacing) { e.currentTarget.style.background = C.borderHover; e.currentTarget.style.borderColor = C.borderHover; } }}
+                                  onMouseLeave={e => { if (!isThisPlacing) { e.currentTarget.style.background = C.panelSurface; e.currentTarget.style.borderColor = C.border; } }}
+                                >☉</button>
                               </div>
-                            </div>
-                          </SectionBody>
+                            );
+                          })}
+
                           <SectionBody>
-                            <textarea placeholder="Add notes about this morphism…"
-                              value={m.description ?? ""}
-                              onChange={e => setMorphisms(prev => prev.map(mx => mx.id === m.id ? { ...mx, description: e.target.value } : mx))}
-                              style={{ width: "100%", minHeight: 56, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, color: C.ink, fontSize: 10, padding: "5px 7px", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "'Courier New', monospace", lineHeight: 1.5 }} />
-                          </SectionBody>
-                          <SectionBody>
-                            <button onClick={() => { setMorphisms(prev => prev.filter(x => x.id !== m.id)); if (activeMorphismId === m.id) setActiveMorphismId(null); setSelectedMorphismNodes(prev => { const n = new Set(prev); n.delete(m.id); return n; }); }}
-                              style={{ width: "100%", padding: "4px 0", background: "transparent", border: `1px solid #fca5a5`, borderRadius: 3, color: "#ef4444", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Courier New', monospace", cursor: "pointer" }}
-                              onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; }}
-                              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-                              Delete Morphism
-                            </button>
+                            <div style={{ fontSize: 8, color: C.inkFaint, letterSpacing: 1, lineHeight: 1.6 }}>{group.desc}</div>
                           </SectionBody>
                         </Section>
+                      );
+                    })}
+                  </Section>
+                ))}
+              </div>
+              {error && <div style={{ color: "#f87171", fontSize: 10, margin: "8px 14px 0" }}>{error}</div>}
+            </Pane>
 
-                        {m.strands.length > 0 && (
-                          <Section label="Strands" depth={1} defaultOpen={false} badge={m.strands.length}>
-                            {analysis.strandLabels.map((sl, i) => {
-                              const strand = m.strands[i];
-                              const srcLV = latticeViews.find(lv => lv.entry.id === strand.fromLatticeId);
-                              const tgtLV = latticeViews.find(lv => lv.entry.id === strand.toLatticeId);
-                              const srcNode = srcLV?.nodes.find(n => n.id === strand.fromNodeId);
-                              const tgtNode = tgtLV?.nodes.find(n => n.id === strand.toNodeId);
-                              return (
-                                <div key={strand.id}>
-                                  <div style={{ padding: "5px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 6 }}>
-                                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: m.color, flexShrink: 0 }} />
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 10, color: C.ink, fontFamily: "'Courier New', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sl.from}</div>
-                                      <div style={{ fontSize: 9, color: C.inkFaint, marginTop: 1 }}>↓ {sl.to}</div>
-                                    </div>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                                      <span style={{ fontSize: 9, color: C.inkFaint }}>{sl.fromOrder}→{sl.toOrder}</span>
-                                      <button onClick={() => setMorphisms(prev => prev.map(mx =>
-                                        mx.id !== m.id ? mx : { ...mx, strands: mx.strands.filter(s => s.id !== strand.id) }
-                                      ))} style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: 13, padding: "0 2px", lineHeight: 1 }}>×</button>
-                                    </div>
+            {leftPane1Open && leftPane2Open && <HPSplitter onDrag={onLeftSplit12} containerRef={leftPanelRef} />}
+
+            <Pane title="Morphisms" open={leftPane2Open} onToggle={() => setLeftPane2Open(o => !o)} flex={leftPane2Flex} scrollClass="sky-scroll-left">
+              {morphisms.length === 0
+                ? <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic", padding: "4px 0" }}>No morphisms yet. Use the Ψ button on the canvas to create one.</div>
+                : <div style={{ margin: "-12px -14px" }}>
+                    {morphisms.map(m => {
+                      const isActive = activeMorphismId === m.id;
+                      const isSelected = selectedMorphismNodes.has(m.id);
+                      const analysis = analyzeMorphism(m.strands, lattices, latticeViews);
+
+                      return (
+                        <Section key={m.id} label={m.name} depth={0} accent={m.color}
+                          badge={m.strands.length ? `${m.strands.length}s` : undefined}
+                          defaultOpen={false}
+                          rightExtra={
+                            <div title={isSelected ? "Deselect for compose" : "Select for compose"}
+                              onClick={e => { e.stopPropagation(); setSelectedMorphismNodes(prev => { const next = new Set(prev); next.has(m.id) ? next.delete(m.id) : next.add(m.id); return next; }); }}
+                              style={{
+                                width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                                border: `2px solid ${m.color}`,
+                                background: isSelected ? m.color : "transparent",
+                                cursor: "pointer", transition: "background 0.15s",
+                                marginRight: 4,
+                              }} />
+                          }>
+
+                          <Section label="Style" depth={1} defaultOpen={false}>
+                            <SectionBody>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Name</span>
+                                  <input value={m.name}
+                                    onChange={e => setMorphisms(prev => prev.map(mx => mx.id === m.id ? { ...mx, name: e.target.value } : mx))}
+                                    style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, color: C.ink, fontSize: 10, padding: "3px 6px", outline: "none", fontFamily: "'Courier New', monospace" }} />
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Color</span>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                    {MORPHISM_COLORS.map(col => (
+                                      <div key={col} onClick={() => setMorphisms(prev => prev.map(mx => mx.id === m.id ? { ...mx, color: col } : mx))}
+                                        style={{ width: 16, height: 16, borderRadius: "50%", background: col, cursor: "pointer", flexShrink: 0,
+                                          border: m.color === col ? `2.5px solid ${C.inkMid}` : `1.5px solid transparent`,
+                                          boxSizing: "border-box", transition: "border 0.1s" }} />
+                                    ))}
                                   </div>
                                 </div>
-                              );
-                            })}
-                            {analysis.kernel.length > 0 && (
-                              <Section label="Kernel" depth={2} defaultOpen={false} badge={analysis.kernel.length}>
-                                <SectionBody>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                                    {analysis.kernel.map((el, i) => (
-                                      <span key={i} style={{ fontSize: 10, color: C.inkMid, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "1px 5px", border: `1px solid ${C.border}` }}>{el}</span>
-                                    ))}
-                                  </div>
-                                </SectionBody>
-                              </Section>
-                            )}
-                            {analysis.image.length > 0 && (
-                              <Section label="Image" depth={2} defaultOpen={false} badge={analysis.image.length}>
-                                <SectionBody>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                                    {analysis.image.map((el, i) => (
-                                      <span key={i} style={{ fontSize: 10, color: m.color, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "1px 5px", border: `1px solid ${C.border}` }}>{el}</span>
-                                    ))}
-                                  </div>
-                                </SectionBody>
-                              </Section>
-                            )}
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Active</span>
+                                  <div title={isActive ? "Deactivate morphism" : "Activate to draw strands"}
+                                    onClick={() => setActiveMorphismId(isActive ? null : m.id)}
+                                    style={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                                      border: `2px solid ${m.color}`, background: isActive ? m.color : "transparent",
+                                      cursor: "pointer", transition: "background 0.15s" }} />
+                                  {isActive && <span style={{ fontSize: 9, color: m.color, letterSpacing: 1, textTransform: "uppercase" }}>drawing strands</span>}
+                                </div>
+                              </div>
+                            </SectionBody>
+                            <SectionBody>
+                              <textarea placeholder="Add notes about this morphism…"
+                                value={m.description ?? ""}
+                                onChange={e => setMorphisms(prev => prev.map(mx => mx.id === m.id ? { ...mx, description: e.target.value } : mx))}
+                                style={{ width: "100%", minHeight: 56, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, color: C.ink, fontSize: 10, padding: "5px 7px", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "'Courier New', monospace", lineHeight: 1.5 }} />
+                            </SectionBody>
+                            <SectionBody>
+                              <button onClick={() => { setMorphisms(prev => prev.filter(x => x.id !== m.id)); if (activeMorphismId === m.id) setActiveMorphismId(null); setSelectedMorphismNodes(prev => { const n = new Set(prev); n.delete(m.id); return n; }); }}
+                                style={{ width: "100%", padding: "4px 0", background: "transparent", border: `1px solid #fca5a5`, borderRadius: 3, color: "#ef4444", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Courier New', monospace", cursor: "pointer" }}
+                                onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                                Delete Morphism
+                              </button>
+                            </SectionBody>
                           </Section>
-                        )}
-                      </Section>
-                    );
-                  })}
 
-                  {/* ── Combine / Intersect selected morphisms ── */}
-                  {(() => {
-                    const selNodes = [...selectedMorphismNodes].filter(id => morphisms.some(m => m.id === id));
-                    if (selNodes.length < 2) return null;
-                    const selMorphisms = selNodes.map(id => morphisms.find(m => m.id === id)).filter(Boolean);
+                          {m.strands.length > 0 && (
+                            <Section label="Strands" depth={1} defaultOpen={false} badge={m.strands.length}>
+                              {analysis.strandLabels.map((sl, i) => {
+                                const strand = m.strands[i];
+                                const srcLV = latticeViews.find(lv => lv.entry.id === strand.fromLatticeId);
+                                const tgtLV = latticeViews.find(lv => lv.entry.id === strand.toLatticeId);
+                                const srcNode = srcLV?.nodes.find(n => n.id === strand.fromNodeId);
+                                const tgtNode = tgtLV?.nodes.find(n => n.id === strand.toNodeId);
+                                return (
+                                  <div key={strand.id}>
+                                    <div style={{ padding: "5px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 6 }}>
+                                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: m.color, flexShrink: 0 }} />
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 10, color: C.ink, fontFamily: "'Courier New', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sl.from}</div>
+                                        <div style={{ fontSize: 9, color: C.inkFaint, marginTop: 1 }}>↓ {sl.to}</div>
+                                      </div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                                        <span style={{ fontSize: 9, color: C.inkFaint }}>{sl.fromOrder}→{sl.toOrder}</span>
+                                        <button onClick={() => setMorphisms(prev => prev.map(mx =>
+                                          mx.id !== m.id ? mx : { ...mx, strands: mx.strands.filter(s => s.id !== strand.id) }
+                                        ))} style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: 13, padding: "0 2px", lineHeight: 1 }}>×</button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {analysis.kernel.length > 0 && (
+                                <Section label="Kernel" depth={2} defaultOpen={false} badge={analysis.kernel.length}>
+                                  <SectionBody>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                                      {analysis.kernel.map((el, i) => (
+                                        <span key={i} style={{ fontSize: 10, color: C.inkMid, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "1px 5px", border: `1px solid ${C.border}` }}>{el}</span>
+                                      ))}
+                                    </div>
+                                  </SectionBody>
+                                </Section>
+                              )}
+                              {analysis.image.length > 0 && (
+                                <Section label="Image" depth={2} defaultOpen={false} badge={analysis.image.length}>
+                                  <SectionBody>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                                      {analysis.image.map((el, i) => (
+                                        <span key={i} style={{ fontSize: 10, color: m.color, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "1px 5px", border: `1px solid ${C.border}` }}>{el}</span>
+                                      ))}
+                                    </div>
+                                  </SectionBody>
+                                </Section>
+                              )}
+                            </Section>
+                          )}
+                        </Section>
+                      );
+                    })}
 
-                    const doCombine = () => {
-                      // Union: all strands from all selected morphisms
-                      const strands = selMorphisms.flatMap(m => m.strands.map(s => ({ ...s, id: Date.now() + Math.random() })));
-                      if (!strands.length) return;
-                      const newId = Date.now();
-                      const color = MORPHISM_COLORS[morphisms.length % MORPHISM_COLORS.length];
-                      setMorphisms(prev => [...prev, { id: newId, name: selMorphisms.map(m => m.name).join("+"), color, strands, description: "" }]);
-                      setActiveMorphismId(newId); setSelectedMorphismNodes(new Set());
-                    };
+                    {(() => {
+                      const selNodes = [...selectedMorphismNodes].filter(id => morphisms.some(m => m.id === id));
+                      if (selNodes.length < 2) return null;
+                      const selMorphisms = selNodes.map(id => morphisms.find(m => m.id === id)).filter(Boolean);
 
-                    const doIntersect = () => {
-                      // Intersection: only strands present (same from+to pair) in ALL selected morphisms
-                      const strandKey = s => `${s.fromLatticeId}:${s.fromNodeId}→${s.toLatticeId}:${s.toNodeId}`;
-                      const sets = selMorphisms.map(m => new Set(m.strands.map(strandKey)));
-                      const refStrands = selMorphisms[0].strands;
-                      const shared = refStrands.filter(s => sets.slice(1).every(set => set.has(strandKey(s))));
-                      if (!shared.length) return;
-                      const newId = Date.now();
-                      const color = MORPHISM_COLORS[morphisms.length % MORPHISM_COLORS.length];
-                      setMorphisms(prev => [...prev, { id: newId, name: selMorphisms.map(m => m.name).join("∩"), color, strands: shared.map(s => ({ ...s, id: Date.now() + Math.random() })), description: "" }]);
-                      setActiveMorphismId(newId); setSelectedMorphismNodes(new Set());
-                    };
+                      const doCombine = () => {
+                        const strands = selMorphisms.flatMap(m => m.strands.map(s => ({ ...s, id: Date.now() + Math.random() })));
+                        if (!strands.length) return;
+                        const newId = Date.now();
+                        const color = MORPHISM_COLORS[morphisms.length % MORPHISM_COLORS.length];
+                        setMorphisms(prev => [...prev, { id: newId, name: selMorphisms.map(m => m.name).join("+"), color, strands, description: "" }]);
+                        setActiveMorphismId(newId); setSelectedMorphismNodes(new Set());
+                      };
 
-                    return (
-                      <div style={{ borderTop: `1px solid ${C.border}`, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 2 }}>
-                          {selNodes.map(id => { const m = morphisms.find(x => x.id === id); return m ? (
-                            <span key={id} style={{ padding: "2px 7px", borderRadius: 10, fontSize: 9, background: m.color, color: "#fff", fontFamily: "'Courier New', monospace" }}>{m.name}</span>
-                          ) : null; })}
+                      const doIntersect = () => {
+                        const strandKey = s => `${s.fromLatticeId}:${s.fromNodeId}→${s.toLatticeId}:${s.toNodeId}`;
+                        const sets = selMorphisms.map(m => new Set(m.strands.map(strandKey)));
+                        const refStrands = selMorphisms[0].strands;
+                        const shared = refStrands.filter(s => sets.slice(1).every(set => set.has(strandKey(s))));
+                        if (!shared.length) return;
+                        const newId = Date.now();
+                        const color = MORPHISM_COLORS[morphisms.length % MORPHISM_COLORS.length];
+                        setMorphisms(prev => [...prev, { id: newId, name: selMorphisms.map(m => m.name).join("∩"), color, strands: shared.map(s => ({ ...s, id: Date.now() + Math.random() })), description: "" }]);
+                        setActiveMorphismId(newId); setSelectedMorphismNodes(new Set());
+                      };
+
+                      return (
+                        <div style={{ borderTop: `1px solid ${C.border}`, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 2 }}>
+                            {selNodes.map(id => { const m = morphisms.find(x => x.id === id); return m ? (
+                              <span key={id} style={{ padding: "2px 7px", borderRadius: 10, fontSize: 9, background: m.color, color: "#fff", fontFamily: "'Courier New', monospace" }}>{m.name}</span>
+                            ) : null; })}
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={doCombine} style={{
+                              flex: 1, padding: "5px 0", background: C.inkMid, border: "none", borderRadius: 4,
+                              color: C.panelBg, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase",
+                              fontFamily: "'Courier New', monospace", cursor: "pointer",
+                            }}>Combine +</button>
+                            <button onClick={doIntersect} style={{
+                              flex: 1, padding: "5px 0", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 4,
+                              color: C.inkMid, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase",
+                              fontFamily: "'Courier New', monospace", cursor: "pointer",
+                            }}
+                              onMouseEnter={e => e.currentTarget.style.background = C.selectedBg}
+                              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>Intersect ∩</button>
+                          </div>
                         </div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={doCombine} style={{
-                            flex: 1, padding: "5px 0", background: C.inkMid, border: "none", borderRadius: 4,
-                            color: C.panelBg, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase",
-                            fontFamily: "'Courier New', monospace", cursor: "pointer",
-                          }}>Combine +</button>
-                          <button onClick={doIntersect} style={{
-                            flex: 1, padding: "5px 0", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 4,
-                            color: C.inkMid, fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase",
-                            fontFamily: "'Courier New', monospace", cursor: "pointer",
-                          }}
-                            onMouseEnter={e => e.currentTarget.style.background = C.selectedBg}
-                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}>Intersect ∩</button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-
-                </div>
-            }
-          </Pane>
-
+                      );
+                    })()}
+                  </div>
+              }
+            </Pane>
           </div>
         )}
 
-        {/* App name + settings — always pinned at bottom of left panel */}
         <div style={{
           flexShrink: 0, borderTop: `2px solid ${C.border}`,
           background: C.panelBg, padding: "7px 10px",
@@ -4852,15 +4933,14 @@ export default function App() {
           </>}
         </div>
       </div>
+
       <VSplitter onMouseDown={(e) => {
         e.preventDefault(); leftSplitDragging.current = true; leftSplitStart.current = e.clientX;
         document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
         if (leftCollapsed) { setLeftCollapsed(false); setLeftW(leftWBeforeCollapse.current); }
       }} />
 
-      {/* ══════════════════════════════════════════════════════
-          CANVAS
-      ══════════════════════════════════════════════════════ */}
+      {/* CANVAS */}
       <div ref={panelRef} style={{
         flex: 1, height: "100%", position: "relative", overflow: "hidden", background: C.bg,
         ...(gridSettings.pattern === "none" ? {} : gridSettings.pattern === "dots" ? {
@@ -4891,7 +4971,6 @@ export default function App() {
             style={{ position: "absolute", top: 16, left: 16, zIndex: 21, background: C.border, border: "none", borderRadius: 4, cursor: "pointer", padding: "4px 10px", fontSize: 9, color: C.ink, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Courier New', monospace" }}>cancel</div>
         )}
 
-        {/* Ghost preview overlay */}
         {placingLattice && ghostMousePos && (() => {
           const cam = camera;
           const wx = (ghostMousePos.x - cam.tx) / cam.scale;
@@ -4927,7 +5006,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Main SVG */}
         <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
           <defs>
             <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
@@ -4984,7 +5062,6 @@ export default function App() {
             ))}
           </g>
 
-          {/* ── Draw strokes layer (world-space, inside camera transform) ── */}
           <g transform={`translate(${camera.tx}, ${camera.ty}) scale(${camera.scale})`} style={{ pointerEvents: "none" }}>
             <defs>
               <marker id="draw-arrow-end" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
@@ -5025,8 +5102,8 @@ export default function App() {
           </g>
         </svg>
 
-          {/* ── Strand overlay — above all nodes ── */}
-          <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}>
+        {/* Strand overlay */}
+        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}>
           <defs>
             {morphisms.map(m => (
               <marker key={m.id} id={`sarr-${m.id}`} markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
@@ -5054,17 +5131,14 @@ export default function App() {
               const x2s = tgtNode.x * cam.scale + cam.tx, y2s = tgtNode.y * cam.scale + cam.ty;
               const nodeR = 26 * cam.scale;
 
-              // Direction and distance
               const dx = x2s - x1s, dy = y2s - y1s;
               const len = Math.sqrt(dx * dx + dy * dy) || 1;
 
-              // Trim endpoints at node borders
               const x1 = x1s + (dx / len) * nodeR * 1.05;
               const y1 = y1s + (dy / len) * nodeR * 1.05;
               const x2 = x2s - (dx / len) * nodeR * 1.05;
               const y2 = y2s - (dy / len) * nodeR * 1.05;
 
-              // Check if there is an edge between these two nodes (only if same lattice)
               let useArc = false;
               if (s.fromLatticeId === s.toLatticeId) {
                 const edges = srcLV.entry.base.edges;
@@ -5077,10 +5151,8 @@ export default function App() {
 
               let pathD;
               if (useArc) {
-                // Quadratic bezier with control point offset perpendicular to the line
                 const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-                // Scale arc offset based on distance (but cap it)
-                const arc = Math.min(80, len * 0.25); // reduced offset for gentler curve
+                const arc = Math.min(80, len * 0.25);
                 const cpx = mx - (dy / len) * arc;
                 const cpy = my + (dx / len) * arc;
                 pathD = `M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`;
@@ -5088,7 +5160,6 @@ export default function App() {
                 pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
               }
 
-              // Determine styling
               const lit = isActive || isPanelSelected;
               const color = m.color;
               const width = lit ? 2.6 : 1.6;
@@ -5130,9 +5201,9 @@ export default function App() {
             const cpx = mx - (dy / len) * arc, cpy = my + (dx / len) * arc;
             return <path d={`M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`} stroke={C.inkFaint} strokeWidth={1.6} fill="none" strokeDasharray="7 4" opacity={0.65} markerEnd="url(#sarr-preview)" />;
           })()}
-          </svg>
+        </svg>
 
-        {/* ── Notes layer ── */}
+        {/* Notes layer */}
         {notes.map(note => {
           const sx = note.x * camera.scale + camera.tx;
           const sy = note.y * camera.scale + camera.ty;
@@ -5172,7 +5243,6 @@ export default function App() {
               }}
             >
               {isCollapsed ? (
-                /* Collapsed pill — just the note icon, click to expand */
                 <div
                   onMouseDown={e => e.stopPropagation()}
                   onClick={e => { e.stopPropagation(); setCollapsedNotes(prev => { const n = new Set(prev); n.delete(note.id); return n; }); }}
@@ -5188,7 +5258,6 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  {/* Title bar */}
                   <div style={{
                     height: titleH, background: C.paneHeader,
                     borderBottom: `1px solid ${C.border}`,
@@ -5196,7 +5265,6 @@ export default function App() {
                     padding: `0 ${Math.max(4, 5 * camera.scale)}px`,
                     flexShrink: 0, cursor: "grab",
                   }}>
-                    {/* Collapse button */}
                     <button onMouseDown={e => e.stopPropagation()}
                       onClick={e => { e.stopPropagation(); if (isEditing) setEditingNoteId(null); setCollapsedNotes(prev => { const n = new Set(prev); n.add(note.id); return n; }); }}
                       style={{ background: "none", border: "none", cursor: "pointer", color: C.inkMid, lineHeight: 1, padding: "1px 3px", opacity: 0.5, transition: "opacity 0.1s", display: "flex", alignItems: "center", flexShrink: 0 }}
@@ -5215,7 +5283,6 @@ export default function App() {
                       onMouseEnter={e => e.currentTarget.style.opacity = "1"}
                       onMouseLeave={e => e.currentTarget.style.opacity = "0.5"}>×</button>
                   </div>
-                  {/* Body */}
                   {isEditing ? (
                     <textarea autoFocus value={note.text}
                       onChange={e => updateNote(note.id, { text: e.target.value })}
@@ -5243,7 +5310,7 @@ export default function App() {
           );
         })}
 
-        {/* ── Draw toolbar — bottom right ── */}
+        {/* Draw toolbar – identical to original, unchanged */}
         {(() => {
           const PALETTE = [
             ["#0B151E","#1e3d54","#3a6278","#93b5c8"],
@@ -5314,27 +5381,23 @@ export default function App() {
               color: active ? C.ink : C.inkFaint, fontWeight: active ? "600" : "400" }}>{txt}</span>
           );
 
-          // Line style rows
           const lineStyles = [
             { key:"plain",      label:"Plain line" },
             { key:"arrow-end",  label:"Arrow →" },
             { key:"arrow-start",label:"Arrow ←" },
             { key:"arrow-both", label:"Arrow ↔" },
           ];
-          // Shape rows
           const shapes = [
             { key:"rect",     label:"Rectangle" },
             { key:"circle",   label:"Ellipse" },
             { key:"triangle", label:"Triangle" },
           ];
-          // Weight options
           const weights = [{sz:1,w:10,h:1.5},{sz:2,w:12,h:3},{sz:4,w:14,h:5}];
 
           return (
             <div style={{ position:"absolute", bottom:14, right:14, zIndex:14, display:"flex", flexDirection:"row", alignItems:"flex-end", gap:7 }}
               onMouseDown={e => e.stopPropagation()}>
 
-              {/* Left mini buttons */}
               <div style={{ display:"flex", flexDirection:"column", gap:5, alignItems:"stretch" }}>
                 <button title={drawPermanent?"Temporary strokes":"Permanent strokes"} onClick={() => setDrawPermanent(p=>!p)} style={{
                   width:48, height:28, borderRadius:5, background: drawPermanent?C.inkMid:"#fff",
@@ -5364,10 +5427,7 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Main button + popup */}
               <div style={{ position:"relative", display:"flex", flexDirection:"column", alignItems:"flex-end" }}>
-
-                {/* Popup menu */}
                 {menuOpen && !isDrawActive && (
                   <div style={{
                     position:"absolute", bottom:"calc(100% + 10px)", right:0,
@@ -5375,15 +5435,11 @@ export default function App() {
                     boxShadow:"0 6px 24px rgba(11,21,30,0.16)", minWidth:152, zIndex:22,
                     display:"flex", flexDirection:"column", gap:2,
                   }}>
-
-                    {/* ── Pen ── */}
                     <div style={menuItemBase(hoveredItem==="pen")}
                       onMouseEnter={()=>setHoveredItem("pen")} onMouseLeave={()=>setHoveredItem(null)}
                       onClick={()=>selectTool("pen")}>
                       {ICONS.pen(false)}{tabLabel("Pen", drawTool==="pen")}
                     </div>
-
-                    {/* ── Plain line (no arrows) — quick access ── */}
                     <div style={menuItemBase(hoveredItem==="plain-line")}
                       onMouseEnter={()=>setHoveredItem("plain-line")} onMouseLeave={()=>setHoveredItem(null)}
                       onClick={()=>selectTool("line","plain")}>
@@ -5392,8 +5448,6 @@ export default function App() {
                       </svg>
                       {tabLabel("Line", drawTool==="line"&&drawLineStyle==="plain")}
                     </div>
-
-                    {/* ── Arrow line (styled) ── */}
                     <div style={{...menuItemBase(hoveredItem==="line"), justifyContent:"space-between"}}
                       onMouseEnter={()=>setHoveredItem("line")} onMouseLeave={()=>setHoveredItem(null)}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -5415,8 +5469,6 @@ export default function App() {
                         </div>
                       )}
                     </div>
-
-                    {/* ── Shape ── */}
                     <div style={{...menuItemBase(hoveredItem==="shape"), justifyContent:"space-between"}}
                       onMouseEnter={()=>setHoveredItem("shape")} onMouseLeave={()=>setHoveredItem(null)}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -5437,19 +5489,13 @@ export default function App() {
                         </div>
                       )}
                     </div>
-
-                    {/* ── Eraser ── */}
                     <div style={menuItemBase(hoveredItem==="eraser")}
                       onMouseEnter={()=>setHoveredItem("eraser")} onMouseLeave={()=>setHoveredItem(null)}
                       onClick={()=>selectTool("eraser")}>
                       {ICONS.eraser(false)}
                       <span style={{fontSize:10,fontFamily:"'Courier New', monospace",letterSpacing:0.8,color:"#ef4444",fontWeight:drawTool==="eraser"?"600":"400"}}>Eraser</span>
                     </div>
-
-                    {/* divider */}
                     <div style={{height:1,background:C.border,margin:"4px 6px"}}/>
-
-                    {/* ── Color tab ── */}
                     <div style={{...menuItemBase(hoveredItem==="color"), justifyContent:"space-between"}}
                       onMouseEnter={()=>setHoveredItem("color")} onMouseLeave={()=>setHoveredItem(null)}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -5481,8 +5527,6 @@ export default function App() {
                         </div>
                       )}
                     </div>
-
-                    {/* ── Weight tab ── */}
                     <div style={{...menuItemBase(hoveredItem==="weight"), justifyContent:"space-between"}}
                       onMouseEnter={()=>setHoveredItem("weight")} onMouseLeave={()=>setHoveredItem(null)}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -5519,11 +5563,9 @@ export default function App() {
                         </div>
                       )}
                     </div>
-
                   </div>
                 )}
 
-                {/* Big square button */}
                 <button title={isDrawActive?`Drawing: ${drawTool} — click to stop`:"Open drawing tools"}
                   onClick={handleSquareClick}
                   style={{
@@ -5544,7 +5586,6 @@ export default function App() {
                         <path d="M13.8 3.8L16 6" stroke={C.inkMid} strokeWidth="1.5"/>
                       </svg>
                   }
-                  {/* Color dot */}
                   <div style={{
                     position:"absolute", bottom:7, right:7,
                     width:9, height:9, borderRadius:"50%",
@@ -5552,13 +5593,12 @@ export default function App() {
                     boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
                   }}/>
                 </button>
-
               </div>
             </div>
           );
         })()}
 
-        {/* ── Ψ Morphism button — bottom left ── */}
+        {/* Ψ Morphism button – bottom left */}
         {(() => {
           const mOpen = morphBtnOpen;
           const mHov = morphBtnHovered;
@@ -5593,10 +5633,7 @@ export default function App() {
             <div style={{ position:"absolute", bottom:14, left:14, zIndex:14, display:"flex", flexDirection:"row", alignItems:"flex-end", gap:7 }}
               onMouseDown={e => e.stopPropagation()}>
 
-              {/* Main Ψ button + popup */}
               <div style={{ position:"relative", display:"flex", flexDirection:"column", alignItems:"flex-start" }}>
-
-                {/* Popup */}
                 {mOpen && !hasActive && (
                   <div style={{
                     position:"absolute", bottom:"calc(100% + 10px)", left:0,
@@ -5604,7 +5641,6 @@ export default function App() {
                     boxShadow:"0 6px 24px rgba(11,21,30,0.16)", minWidth:180, zIndex:22,
                     display:"flex", flexDirection:"column", gap:3,
                   }}>
-                    {/* New morphism */}
                     <div style={menuItemBase(mHov==="new")}
                       onMouseEnter={()=>setMorphBtnHovered("new")} onMouseLeave={()=>setMorphBtnHovered(null)}
                       onClick={createMorphism}>
@@ -5618,7 +5654,6 @@ export default function App() {
 
                     {morphisms.length > 0 && <div style={{height:1,background:C.border,margin:"3px 6px"}}/>}
 
-                    {/* Existing morphisms */}
                     {morphisms.map(m => (
                       <div key={m.id}
                         style={{...menuItemBase(mHov===m.id), justifyContent:"space-between"}}
@@ -5636,7 +5671,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* The big Ψ button */}
                 <button
                   title={hasActive ? `Morphism active: ${activeMorphism?.name ?? ""} — click to deactivate` : "Open morphism tools"}
                   onClick={handlePsiClick}
@@ -5651,7 +5685,6 @@ export default function App() {
                   }}
                   onMouseEnter={e=>{if(!hasActive){e.currentTarget.style.background=C.selectedBg;e.currentTarget.style.borderColor=C.selectedBord;}}}
                   onMouseLeave={e=>{if(!hasActive){e.currentTarget.style.background="#fff";e.currentTarget.style.borderColor=mOpen?C.selectedBord:C.border;}}}>
-                  {/* Ψ (Psi) Unicode */}
                   <span style={{
                     fontSize: hasActive ? 26 : 28,
                     fontWeight: "300",
@@ -5661,7 +5694,6 @@ export default function App() {
                     userSelect: "none",
                     letterSpacing: 0,
                   }}>Ψ</span>
-                  {/* Strand count badge */}
                   {morphisms.length > 0 && !hasActive && (
                     <div style={{
                       position:"absolute", top:6, right:6,
@@ -5671,7 +5703,6 @@ export default function App() {
                       fontSize:8, color:"#fff", fontFamily:"'Courier New', monospace", fontWeight:"700",
                     }}>{morphisms.length}</div>
                   )}
-                  {/* Active morphism color dot */}
                   {hasActive && (
                     <div style={{
                       position:"absolute", bottom:7, right:7,
@@ -5681,15 +5712,12 @@ export default function App() {
                     }}/>
                   )}
                 </button>
-
               </div>
 
-              {/* Dom / Rng buttons — appear to the RIGHT of Ψ when a morphism with strands is active */}
               {hasActive && activeMorphism && activeMorphism.strands.length > 0 && (() => {
                 const domainKeys = new Set(activeMorphism.strands.map(s => `${s.fromLatticeId}:${s.fromNodeId}`));
                 const rangeKeys  = new Set(activeMorphism.strands.map(s => `${s.toLatticeId}:${s.toNodeId}`));
                 
-                // Helper function to convert Set of "latticeId:nodeId" strings to selectedNodes object
                 const convertKeysToSelectedNodes = (keys) => {
                   const result = {};
                   for (const key of keys) {
@@ -5698,7 +5726,7 @@ export default function App() {
                     if (parts.length !== 2) continue;
                     const lid = Number(parts[0]);
                     const nid = Number(parts[1]);
-                    if (isNaN(lid) || isNaN(nid)) continue; // Skip invalid entries
+                    if (isNaN(lid) || isNaN(nid)) continue;
                     if (!result[lid]) result[lid] = new Set();
                     result[lid].add(nid);
                   }
@@ -5743,7 +5771,6 @@ export default function App() {
                 );
               })()}
 
-              {/* Active morphism hint */}
               {hasActive && (
                 <div style={{
                   background:activeMorphism?.color ?? C.inkMid, color:"#fff",
@@ -5759,10 +5786,9 @@ export default function App() {
           );
         })()}
 
-        {/* Top-right controls: zoom reset + note button */}
+        {/* Top-right controls */}
         <div style={{ position: "absolute", top: 14, right: 14, zIndex: 3, display: "flex", alignItems: "center", gap: 6 }}
           onMouseDown={e => e.stopPropagation()}>
-          {/* Zoom / reset — secondary, sits left of note */}
           <button onClick={() => {
             if (!panelRef.current) return;
             const r = panelRef.current.getBoundingClientRect();
@@ -5775,14 +5801,12 @@ export default function App() {
             {Math.round(camera.scale * 100)}% ↺
           </button>
 
-          {/* Note button — primary corner button */}
           <button
             title="Add a note to the canvas"
             onClick={() => {
               if (!panelRef.current) return;
               const r = panelRef.current.getBoundingClientRect();
               const cam = cameraRef.current;
-              // Place in current viewport center
               const wx = (r.width / 2 - cam.tx) / cam.scale;
               const wy = (r.height / 2 - cam.ty) / cam.scale;
               addNote(wx, wy);
@@ -5806,16 +5830,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* Right splitter */}
+      {/* RIGHT PANEL */}
       <VSplitter onMouseDown={(e) => {
         e.preventDefault(); rightSplitDragging.current = true; rightSplitStart.current = e.clientX;
         document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
         if (rightCollapsed) { setRightCollapsed(false); setRightW(rightWBeforeCollapse.current); }
       }} />
 
-      {/* ══════════════════════════════════════════════════════
-          RIGHT PANEL
-      ══════════════════════════════════════════════════════ */}
       <div ref={rightPanelRef} style={{
         width: actualRightW, flexShrink: 0, height: "100%",
         display: "flex", flexDirection: "column",
@@ -5829,343 +5850,333 @@ export default function App() {
         {actualRightW > 40 && (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", clipPath: "inset(0)" }}>
 
-          {/* Pane 1: Selected Graph */}
-          <Pane title="Selected Graph" open={rightPane1Open} onToggle={() => setRightPane1Open(o => !o)} flex={rightPane1Flex} scrollClass="sky-scroll-right">
-            {(() => {
-              const activeLatticeNodes = new Set(allSelectedNodes.map(n => n.latticeId));
-              const displayNodes = [...activeLatticeNodes];
+            <Pane title="Selected Graph" open={rightPane1Open} onToggle={() => setRightPane1Open(o => !o)} flex={rightPane1Flex} scrollClass="sky-scroll-right">
+              {(() => {
+                const activeLatticeNodes = new Set(allSelectedNodes.map(n => n.latticeId));
+                const displayNodes = [...activeLatticeNodes];
 
-              if (displayNodes.length === 0) return (
-                <div style={{ color: C.inkFaint, fontSize: 11, fontStyle: "italic" }}>
-                  {lattices.length === 0 ? "No graphs on canvas yet." : "Select a node to inspect a graph."}
-                </div>
-              );
+                if (displayNodes.length === 0) return (
+                  <div style={{ color: C.inkFaint, fontSize: 11, fontStyle: "italic" }}>
+                    {lattices.length === 0 ? "No graphs on canvas yet." : "Select a node to inspect a graph."}
+                  </div>
+                );
 
-              return (
-                <div style={{ margin: "-12px -14px" }}>
-                  {displayNodes.map(selId => {
-                    const lv = latticeViews.find(v => v.entry.id === selId);
-                    const l  = lattices.find(x => x.id === selId);
-                    if (!l || !lv) return null;
-                    const { entry, nodes, fullNode, colorMap, accent, zParts, expVal, statsBase } = lv;
-                    const displayBase = statsBase ?? entry.base;
-                    
-                    return (
-                      <Section key={selId} label={entry.label} depth={0} accent={accent} defaultOpen={false}
-                        badge={entry.isCollapsed ? `⊙ ${displayBase.nodes.length}n` : `${displayBase.nodes.length}n`}>
+                return (
+                  <div style={{ margin: "-12px -14px" }}>
+                    {displayNodes.map(selId => {
+                      const lv = latticeViews.find(v => v.entry.id === selId);
+                      const l  = lattices.find(x => x.id === selId);
+                      if (!l || !lv) return null;
+                      const { entry, nodes, fullNode, colorMap, accent, zParts, expVal, statsBase } = lv;
+                      const displayBase = statsBase ?? entry.base;
+                      
+                      return (
+                        <Section key={selId} label={entry.label} depth={0} accent={accent} defaultOpen={false}
+                          badge={entry.isCollapsed ? `⊙ ${displayBase.nodes.length}n` : `${displayBase.nodes.length}n`}>
 
-                        {/* ── STYLE FOLDER ── */}
-                        <Section label="Style" depth={1} defaultOpen={false}>
-                          
-                          {/* Rename Graph */}
-                          <Section label="Rename" depth={2} defaultOpen={false}>
-                            <SectionBody>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Title</span>
-                                <input 
-                                  value={entry.label || ''}
-                                  onChange={e => updateLattice(entry.id, { label: e.target.value || `Graph ${entry.id}` })}
-                                  style={{ 
-                                    flex: 1, 
-                                    background: C.bg, 
-                                    border: `1px solid ${C.border}`, 
-                                    borderRadius: 3, 
-                                    color: C.ink, 
-                                    fontSize: 10, 
-                                    padding: "3px 6px", 
-                                    outline: "none", 
-                                    fontFamily: "'Courier New', monospace" 
-                                  }}
-                                  placeholder="Enter graph name..."
-                                />
-                              </div>
-                              <div style={{ fontSize: 8, color: C.inkFaint, marginTop: 4, letterSpacing: 0.5 }}>
-                                Changes the display name only. The underlying group data remains intact.
-                              </div>
-                            </SectionBody>
-                          </Section>
-
-                          {/* Stats */}
-                          <Section label="Stats" depth={2} defaultOpen={false}>
-                            {entry.kind === "Un" ? (
-                              <SectionRow label={`U(${entry.param})`} value={formatZ(zParts)} />
-                            ) : (
-                              <SectionRow label="Group" value={entry.label} />
-                            )}
-                            <SectionRow label="Kind"   value={l.kind} />
-                            <SectionRow label="Nodes"  value={String(displayBase.nodes.length)} />
-                            <SectionRow label="Edges"  value={String(displayBase.edges.length)} />
-                            {fullNode && <>
-                              <SectionRow label="|G|"    value={String(fullNode.order)} />
-                              <SectionRow label="Levels" value={String((displayBase.maxLevel ?? 0) + 1)} />
-                            </>}
-                            {entry.kind === "Un" && <>
-                              <SectionRow label="Exponent" value={String(expVal)} />
-                              <SectionRow label="Abelian"  value="yes" />
-                            </>}
-                            {entry.isCollapsed && <SectionRow label="State" value="collapsed ⊙" />}
-                          </Section>
-
-                          {/* Lattice Notes */}
-                          <Section label="Lattice Notes" depth={2} defaultOpen={false}>
-                            <SectionBody>
-                              <textarea
-                                value={entry.description || ''}
-                                onChange={e => updateLatticeDescription(entry.id, e.target.value)}
-                                placeholder="Add a description for this lattice..."
-                                style={{
-                                  width: "100%",
-                                  minHeight: 80,
-                                  background: C.bg,
-                                  border: `1px solid ${C.border}`,
-                                  borderRadius: 3,
-                                  color: C.ink,
-                                  fontSize: 10,
-                                  padding: "5px 7px",
-                                  outline: "none",
-                                  resize: "vertical",
-                                  boxSizing: "border-box",
-                                  fontFamily: "'Courier New', monospace",
-                                  lineHeight: 1.5
-                                }}
-                              />
-                            </SectionBody>
-                          </Section>
-
-                          {/* Display Toggles */}
-                          <Section label="Display" depth={2} defaultOpen={false}>
-                            <SectionToggle label="Show Edges"        checked={entry.showEdges}     onChange={v => updateLattice(entry.id, { showEdges: v })} />
-                            <SectionToggle label="Show Arrows"       checked={entry.showArrows}    onChange={v => updateLattice(entry.id, { showArrows: v })} />
-                            <SectionToggle label="Show Epicenter ☉"  checked={entry.showEpicenter} onChange={v => updateLattice(entry.id, { showEpicenter: v })} />
-                            {(entry.base.viewType === "hasse" || !entry.base.viewType) && <>
-                              <SectionToggle label="Gen. Offset (Hasse)"
-                                checked={entry.hasseLayout?.genOffset ?? false}
-                                onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), genOffset: v } })} />
-                              <SectionToggle label="Rank by Order"
-                                checked={entry.hasseLayout?.rankByOrder ?? false}
-                                onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), rankByOrder: v } })} />
-                            </>}
-                            <SectionBody>
-                              <div style={{ fontSize: 9, color: C.inkFaint, lineHeight: 1.6 }}>Drag the ☉ marker on the canvas to move the entire lattice.</div>
-                            </SectionBody>
-                          </Section>
-
-                        </Section>
-
-                        {/* ── SUBGROUPS ── */}
-                        <Section label="Subgroups" depth={1} defaultOpen={false} badge={nodes.length}>
-                          {/* Order color legend */}
-                          <SectionBody>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                              {Object.entries(colorMap).map(([ord, col]) => (
-                                <div key={ord} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: C.inkMid }}>
-                                  <div style={{ width: 11, height: 11, borderRadius: "50%", background: col, flexShrink: 0, border: `1.5px solid ${C.border}` }} />
-                                  <span style={{ fontFamily: "'Courier New', monospace" }}>|H|={ord}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </SectionBody>
-                          <SectionBody noPad>
-                            <div style={{ padding: "6px 8px" }}>
-                              {[...nodes].sort((a, b) => a.order - b.order).map(node => {
-                                return (
-                                  <SubgroupRow 
-                                    key={node.id} 
-                                    node={node} 
-                                    colorMap={colorMap}
-                                    isSelected={isNodeSelected(l.id, node.id)}
-                                    onToggle={() => toggleNodeSelect(l.id, node.id)} 
+                          <Section label="Style" depth={1} defaultOpen={false}>
+                            
+                            <Section label="Rename" depth={2} defaultOpen={false}>
+                              <SectionBody>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 8, letterSpacing: 1.5, color: C.inkFaint, textTransform: "uppercase", minWidth: 38, flexShrink: 0 }}>Title</span>
+                                  <input 
+                                    value={entry.label || ''}
+                                    onChange={e => updateLattice(entry.id, { label: e.target.value || `Graph ${entry.id}` })}
+                                    style={{ 
+                                      flex: 1, 
+                                      background: C.bg, 
+                                      border: `1px solid ${C.border}`, 
+                                      borderRadius: 3, 
+                                      color: C.ink, 
+                                      fontSize: 10, 
+                                      padding: "3px 6px", 
+                                      outline: "none", 
+                                      fontFamily: "'Courier New', monospace" 
+                                    }}
+                                    placeholder="Enter graph name..."
                                   />
-                                );
-                              })}
-                            </div>
-                          </SectionBody>
-                        </Section>
-
-                        {/* ── GRAPH ACTIONS ── */}
-                        {(() => {
-                          const confirmOpen = confirmDeleteNodes.has(l.id);
-                          const setConfirmOpen = (v) => setConfirmDeleteNodes(prev => {
-                            const next = new Set(prev);
-                            v ? next.add(l.id) : next.delete(l.id);
-                            return next;
-                          });
-                          return (
-                            <SectionBody>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button
-                                  onClick={() => setConfirmOpen(!confirmOpen)}
-                                  style={{
-                                    flex: 1, padding: "5px 0", borderRadius: 4, cursor: "pointer",
-                                    background: confirmOpen ? "#fef2f2" : "transparent",
-                                    border: `1px solid #fca5a5`,
-                                    color: "#ef4444", fontSize: 9, letterSpacing: 1.5,
-                                    textTransform: "uppercase", fontFamily: "'Courier New', monospace",
-                                    transition: "background 0.12s",
-                                  }}
-                                  onMouseEnter={e => { if (!confirmOpen) e.currentTarget.style.background = "#fff5f5"; }}
-                                  onMouseLeave={e => { if (!confirmOpen) e.currentTarget.style.background = "transparent"; }}>
-                                  🗑 Delete
-                                </button>
-                                {entry.isCollapsed ? (
-                                  <button
-                                    title="Expand graph back to full layout. Morphism strands restore to original endpoints."
-                                    onClick={() => expandGraph(l.id)}
-                                    style={{
-                                      flex: 1, padding: "5px 0", borderRadius: 4, cursor: "pointer",
-                                      background: C.selectedBg, border: `1px solid ${C.selectedBord}`,
-                                      color: C.ink, fontSize: 9, letterSpacing: 1.5,
-                                      textTransform: "uppercase", fontFamily: "'Courier New', monospace",
-                                      transition: "background 0.12s",
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.background = C.borderHover}
-                                    onMouseLeave={e => e.currentTarget.style.background = C.selectedBg}>
-                                    ⊙ Expand
-                                  </button>
-                                ) : (
-                                  <button
-                                    title="Collapse this graph to a single representative node. Strands re-route to it; expand to restore."
-                                    onClick={() => collapseGraphToNode(l.id)}
-                                    style={{
-                                      flex: 1, padding: "5px 0", borderRadius: 4, cursor: "pointer",
-                                      background: "transparent", border: `1px solid ${C.border}`,
-                                      color: C.inkMid, fontSize: 9, letterSpacing: 1.5,
-                                      textTransform: "uppercase", fontFamily: "'Courier New', monospace",
-                                      transition: "background 0.12s",
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.background = C.selectedBg}
-                                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                                    ⊙ Collapse
-                                  </button>
-                                )}
-                              </div>
-                              {confirmOpen && (
-                                <div style={{ marginTop: 7, padding: "8px", background: "#fef2f2", borderRadius: 4, border: `1px solid #fecaca`, display: "flex", flexDirection: "column", gap: 7 }}>
-                                  <div style={{ fontSize: 9, color: "#991b1b", lineHeight: 1.5 }}>Remove <strong>{entry.label}</strong> from the canvas? This cannot be undone.</div>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    <button onClick={() => { removeLattice(l.id); }} style={{
-                                      flex: 1, padding: "5px 0", background: "#ef4444", border: "none", borderRadius: 4,
-                                      color: "#fff", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase",
-                                      fontFamily: "'Courier New', monospace", cursor: "pointer", fontWeight: "600",
-                                    }}
-                                      onMouseEnter={e => e.currentTarget.style.background = "#dc2626"}
-                                      onMouseLeave={e => e.currentTarget.style.background = "#ef4444"}>
-                                      Confirm
-                                    </button>
-                                    <button onClick={() => setConfirmOpen(false)} style={{
-                                      flex: 1, padding: "5px 0", background: "transparent", border: `1px solid #fca5a5`,
-                                      borderRadius: 4, color: "#ef4444", fontSize: 9, letterSpacing: 1.5,
-                                      textTransform: "uppercase", fontFamily: "'Courier New', monospace", cursor: "pointer",
-                                    }}>
-                                      Cancel
-                                    </button>
-                                  </div>
                                 </div>
+                                <div style={{ fontSize: 8, color: C.inkFaint, marginTop: 4, letterSpacing: 0.5 }}>
+                                  Changes the display name only. The underlying group data remains intact.
+                                </div>
+                              </SectionBody>
+                            </Section>
+
+                            <Section label="Stats" depth={2} defaultOpen={false}>
+                              {entry.kind === "Un" ? (
+                                <SectionRow label={`U(${entry.param})`} value={formatZ(zParts)} />
+                              ) : (
+                                <SectionRow label="Group" value={entry.label} />
                               )}
-                            </SectionBody>
-                          );
-                        })()}
+                              <SectionRow label="Kind"   value={l.kind} />
+                              <SectionRow label="Nodes"  value={String(displayBase.nodes.length)} />
+                              <SectionRow label="Edges"  value={String(displayBase.edges.length)} />
+                              {fullNode && <>
+                                <SectionRow label="|G|"    value={String(fullNode.order)} />
+                                <SectionRow label="Levels" value={String((displayBase.maxLevel ?? 0) + 1)} />
+                              </>}
+                              {entry.kind === "Un" && <>
+                                <SectionRow label="Exponent" value={String(expVal)} />
+                                <SectionRow label="Abelian"  value="yes" />
+                              </>}
+                              {entry.isCollapsed && <SectionRow label="State" value="collapsed ⊙" />}
+                            </Section>
 
-                      </Section>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </Pane>
+                            <Section label="Lattice Notes" depth={2} defaultOpen={false}>
+                              <SectionBody>
+                                <textarea
+                                  value={entry.description || ''}
+                                  onChange={e => updateLatticeDescription(entry.id, e.target.value)}
+                                  placeholder="Add a description for this lattice..."
+                                  style={{
+                                    width: "100%",
+                                    minHeight: 80,
+                                    background: C.bg,
+                                    border: `1px solid ${C.border}`,
+                                    borderRadius: 3,
+                                    color: C.ink,
+                                    fontSize: 10,
+                                    padding: "5px 7px",
+                                    outline: "none",
+                                    resize: "vertical",
+                                    boxSizing: "border-box",
+                                    fontFamily: "'Courier New', monospace",
+                                    lineHeight: 1.5
+                                  }}
+                                />
+                              </SectionBody>
+                            </Section>
 
-          {rightPane1Open && rightPane2Open && <HPSplitter onDrag={onRightSplit12} containerRef={rightPanelRef} />}
+                            <Section label="Display" depth={2} defaultOpen={false}>
+                              <SectionToggle label="Show Edges"        checked={entry.showEdges}     onChange={v => updateLattice(entry.id, { showEdges: v })} />
+                              <SectionToggle label="Show Arrows"       checked={entry.showArrows}    onChange={v => updateLattice(entry.id, { showArrows: v })} />
+                              <SectionToggle label="Show Epicenter ☉"  checked={entry.showEpicenter} onChange={v => updateLattice(entry.id, { showEpicenter: v })} />
+                              {(entry.base.viewType === "hasse" || !entry.base.viewType) && <>
+                                <SectionToggle label="Gen. Offset (Hasse)"
+                                  checked={entry.hasseLayout?.genOffset ?? false}
+                                  onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), genOffset: v } })} />
+                                <SectionToggle label="Rank by Order"
+                                  checked={entry.hasseLayout?.rankByOrder ?? false}
+                                  onChange={v => updateLattice(entry.id, { hasseLayout: { ...(entry.hasseLayout ?? {}), rankByOrder: v } })} />
+                              </>}
+                              <SectionBody>
+                                <div style={{ fontSize: 9, color: C.inkFaint, lineHeight: 1.6 }}>Drag the ☉ marker on the canvas to move the entire lattice.</div>
+                              </SectionBody>
+                            </Section>
 
-          {/* Pane 2: Selected Nodes */}
-          <Pane title={`Selected Nodes${totalSelected > 0 ? ` (${totalSelected})` : ""}`} open={rightPane2Open} onToggle={() => setRightPane2Open(o => !o)} flex={rightPane2Flex} scrollClass="sky-scroll-right">
-            {allSelectedNodes.length > 0
-              ? <div style={{ margin: "-12px -14px" }}>
-                  {allSelectedNodes.map(({ node, colorMap, latticeId, latticeLabel, indexVal, entry }) => {
-                    const col = orderColor(node.order, colorMap);
-                    const cyclicLabel = node.order === 1 ? "Trivial" : node.isCyclic ? "Cyclic" : node.shape === "square" ? "Non-cyclic · pair gens" : "Non-cyclic · triple gens";
-                    return (
-                      <Section key={`${latticeId}:${node.id}`} label={node.shortLabel} badge={`ord ${node.order}`} accent={col} depth={0} defaultOpen={false}>
-                        <Section label="Label & Style" depth={1} defaultOpen={false}>
-                          <SectionRow
-                            label="Notation"
-                            value={node.viewType === "elements" ? `[${node.elements[0]}] — element` : `⟨·⟩ — subgroup`}
-                            accent={node.viewType === "elements" ? "#f97316" : "#0284c7"}
-                          />
-                          <SectionBody>
-                            <div style={{ fontSize: 11, color: C.ink, fontFamily: "'Courier New', monospace", wordBreak: "break-all", lineHeight: 1.5 }}>{node.label}</div>
-                          </SectionBody>
-                          <SectionBody>
-                            <div style={{ fontSize: 8, letterSpacing: 2, color: C.inkFaint, textTransform: "uppercase", marginBottom: 6 }}>Style Override</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1, minWidth: 36, flexShrink: 0 }}>Alias</span>
-                                <input type="text" placeholder={node.shortLabel}
-                                  value={nodeCustomStyles[`${latticeId}:${node.id}`]?.labelAlias ?? ""}
-                                  onChange={e => setNodeCustomStyles(prev => ({
-                                    ...prev, [`${latticeId}:${node.id}`]: { ...(prev[`${latticeId}:${node.id}`] ?? {}), labelAlias: e.target.value || undefined }
-                                  }))}
-                                  style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, color: C.ink, fontSize: 10, padding: "3px 6px", outline: "none", fontFamily: "'Courier New', monospace" }} />
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1, minWidth: 36, flexShrink: 0 }}>Color</span>
-                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                  {["#ef4444","#f97316","#ca8a04","#16a34a","#0284c7","#7c3aed","#db2777","#0891b2"].map(swatchCol => {
-                                    const key = `${latticeId}:${node.id}`;
-                                    const active = nodeCustomStyles[key]?.color === swatchCol;
-                                    return (
-                                      <div key={swatchCol}
-                                        onClick={() => setNodeCustomStyles(prev => ({ ...prev, [key]: { ...(prev[key] ?? {}), color: active ? undefined : swatchCol } }))}
-                                        style={{ width: 16, height: 16, borderRadius: "50%", cursor: "pointer", background: swatchCol, flexShrink: 0, border: active ? `2.5px solid ${C.ink}` : `1.5px solid transparent`, boxSizing: "border-box", boxShadow: active ? `0 0 0 1px #fff inset` : "none", transition: "border 0.1s" }} />
-                                    );
-                                  })}
-                                  {nodeCustomStyles[`${latticeId}:${node.id}`]?.color && (
-                                    <div onClick={() => setNodeCustomStyles(prev => { const next = { ...prev }; if (next[`${latticeId}:${node.id}`]) delete next[`${latticeId}:${node.id}`].color; return next; })}
-                                      style={{ width: 16, height: 16, borderRadius: "50%", cursor: "pointer", background: C.bg, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: C.inkFaint }}>×</div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </SectionBody>
-                        </Section>
-                        <Section label="Info" depth={1} defaultOpen={false}>
-
-                          <Section label="Identity" depth={2} defaultOpen={false}>
-                            <SectionRow label="Group"  value={latticeLabel} />
-                            <SectionRow label="Type"   value={cyclicLabel} />
-                            <SectionRow label="Normal" value={node.isNormal ? "yes ✓" : "no"} />
-                            {node.isCyclic && node.order > 1 && (() => {
-                              const SUB = "₀₁₂₃₄₅₆₇₈₉";
-                              const sub = x => String(x).split("").map(d => SUB[parseInt(d)]??d).join("");
-                              return <SectionRow label="Iso" value={`ℤ${sub(node.order)}`} accent={col} />;
-                            })()}
                           </Section>
-                          <Section label="Metrics" depth={2} defaultOpen={false}>
-                            <SectionRow label="Order" value={String(node.order)} accent={col} />
-                            <SectionRow label="Level" value={String(node.level)} />
-                            <SectionRow label="Index" value={String(indexVal)} />
-                          </Section>
-                          <Section label="Elements" depth={2} defaultOpen={false} badge={node.elements.length}>
+
+                          <Section label="Subgroups" depth={1} defaultOpen={false} badge={nodes.length}>
                             <SectionBody>
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                {node.elements.map((el, i) => (
-                                  <span key={i} style={{ fontSize: 11, color: col, fontWeight: "700", fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "2px 7px", border: `1px solid ${C.border}` }}>{el}</span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {Object.entries(colorMap).map(([ord, col]) => (
+                                  <div key={ord} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: C.inkMid }}>
+                                    <div style={{ width: 11, height: 11, borderRadius: "50%", background: col, flexShrink: 0, border: `1.5px solid ${C.border}` }} />
+                                    <span style={{ fontFamily: "'Courier New', monospace" }}>|H|={ord}</span>
+                                  </div>
                                 ))}
                               </div>
                             </SectionBody>
-                          </Section>
-                          <Section label="Generators" depth={2} defaultOpen={false} badge={node.generators.length}>
-                            <SectionBody>
-                              {node.generators.length === 0
-                                ? <span style={{ fontSize: 11, color: C.inkFaint }}>∅ trivial</span>
-                                : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                    {(node.generatorLabels ?? node.generators).map((g, i) => (
-                                      <div key={i} style={{ fontSize: 11, color: C.inkMid, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "3px 8px", border: `1px solid ${C.border}` }}>⟨{g.join(", ")}⟩</div>
-                                    ))}
-                                  </div>
-                              }
+                            <SectionBody noPad>
+                              <div style={{ padding: "6px 8px" }}>
+                                {[...nodes].sort((a, b) => a.order - b.order).map(node => {
+                                  return (
+                                    <SubgroupRow 
+                                      key={node.id} 
+                                      node={node} 
+                                      colorMap={colorMap}
+                                      isSelected={isNodeSelected(l.id, node.id)}
+                                      onToggle={() => toggleNodeSelect(l.id, node.id)} 
+                                    />
+                                  );
+                                })}
+                              </div>
                             </SectionBody>
                           </Section>
-                          <Section label="Notes & Attributes" depth={1} defaultOpen={false}>
+
+                          {(() => {
+                            const confirmOpen = confirmDeleteNodes.has(l.id);
+                            const setConfirmOpen = (v) => setConfirmDeleteNodes(prev => {
+                              const next = new Set(prev);
+                              v ? next.add(l.id) : next.delete(l.id);
+                              return next;
+                            });
+                            return (
+                              <SectionBody>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <button
+                                    onClick={() => setConfirmOpen(!confirmOpen)}
+                                    style={{
+                                      flex: 1, padding: "5px 0", borderRadius: 4, cursor: "pointer",
+                                      background: confirmOpen ? "#fef2f2" : "transparent",
+                                      border: `1px solid #fca5a5`,
+                                      color: "#ef4444", fontSize: 9, letterSpacing: 1.5,
+                                      textTransform: "uppercase", fontFamily: "'Courier New', monospace",
+                                      transition: "background 0.12s",
+                                    }}
+                                    onMouseEnter={e => { if (!confirmOpen) e.currentTarget.style.background = "#fff5f5"; }}
+                                    onMouseLeave={e => { if (!confirmOpen) e.currentTarget.style.background = "transparent"; }}>
+                                    🗑 Delete
+                                  </button>
+                                  {entry.isCollapsed ? (
+                                    <button
+                                      title="Expand graph back to full layout. Morphism strands restore to original endpoints."
+                                      onClick={() => expandGraph(l.id)}
+                                      style={{
+                                        flex: 1, padding: "5px 0", borderRadius: 4, cursor: "pointer",
+                                        background: C.selectedBg, border: `1px solid ${C.selectedBord}`,
+                                        color: C.ink, fontSize: 9, letterSpacing: 1.5,
+                                        textTransform: "uppercase", fontFamily: "'Courier New', monospace",
+                                        transition: "background 0.12s",
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = C.borderHover}
+                                      onMouseLeave={e => e.currentTarget.style.background = C.selectedBg}>
+                                      ⊙ Expand
+                                    </button>
+                                  ) : (
+                                    <button
+                                      title="Collapse this graph to a single representative node. Strands re-route to it; expand to restore."
+                                      onClick={() => collapseGraphToNode(l.id)}
+                                      style={{
+                                        flex: 1, padding: "5px 0", borderRadius: 4, cursor: "pointer",
+                                        background: "transparent", border: `1px solid ${C.border}`,
+                                        color: C.inkMid, fontSize: 9, letterSpacing: 1.5,
+                                        textTransform: "uppercase", fontFamily: "'Courier New', monospace",
+                                        transition: "background 0.12s",
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = C.selectedBg}
+                                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                      ⊙ Collapse
+                                    </button>
+                                  )}
+                                </div>
+                                {confirmOpen && (
+                                  <div style={{ marginTop: 7, padding: "8px", background: "#fef2f2", borderRadius: 4, border: `1px solid #fecaca`, display: "flex", flexDirection: "column", gap: 7 }}>
+                                    <div style={{ fontSize: 9, color: "#991b1b", lineHeight: 1.5 }}>Remove <strong>{entry.label}</strong> from the canvas? This cannot be undone.</div>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      <button onClick={() => { removeLattice(l.id); }} style={{
+                                        flex: 1, padding: "5px 0", background: "#ef4444", border: "none", borderRadius: 4,
+                                        color: "#fff", fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase",
+                                        fontFamily: "'Courier New', monospace", cursor: "pointer", fontWeight: "600",
+                                      }}
+                                        onMouseEnter={e => e.currentTarget.style.background = "#dc2626"}
+                                        onMouseLeave={e => e.currentTarget.style.background = "#ef4444"}>
+                                        Confirm
+                                      </button>
+                                      <button onClick={() => setConfirmOpen(false)} style={{
+                                        flex: 1, padding: "5px 0", background: "transparent", border: `1px solid #fca5a5`,
+                                        borderRadius: 4, color: "#ef4444", fontSize: 9, letterSpacing: 1.5,
+                                        textTransform: "uppercase", fontFamily: "'Courier New', monospace", cursor: "pointer",
+                                      }}>
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </SectionBody>
+                            );
+                          })()}
+
+                        </Section>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </Pane>
+
+            {rightPane1Open && rightPane2Open && <HPSplitter onDrag={onRightSplit12} containerRef={rightPanelRef} />}
+
+            <Pane title={`Selected Nodes${totalSelected > 0 ? ` (${totalSelected})` : ""}`} open={rightPane2Open} onToggle={() => setRightPane2Open(o => !o)} flex={rightPane2Flex} scrollClass="sky-scroll-right">
+              {allSelectedNodes.length > 0
+                ? <div style={{ margin: "-12px -14px" }}>
+                    {allSelectedNodes.map(({ node, colorMap, latticeId, latticeLabel, indexVal, entry }) => {
+                      const col = orderColor(node.order, colorMap);
+                      const cyclicLabel = node.order === 1 ? "Trivial" : node.isCyclic ? "Cyclic" : node.shape === "square" ? "Non-cyclic · pair gens" : "Non-cyclic · triple gens";
+                      return (
+                        <Section key={`${latticeId}:${node.id}`} label={node.shortLabel} badge={`ord ${node.order}`} accent={col} depth={0} defaultOpen={false}>
+                          <Section label="Label & Style" depth={1} defaultOpen={false}>
+                            <SectionRow
+                              label="Notation"
+                              value={node.viewType === "elements" ? `[${node.elements[0]}] — element` : `⟨·⟩ — subgroup`}
+                              accent={node.viewType === "elements" ? "#f97316" : "#0284c7"}
+                            />
+                            <SectionBody>
+                              <div style={{ fontSize: 11, color: C.ink, fontFamily: "'Courier New', monospace", wordBreak: "break-all", lineHeight: 1.5 }}>{node.label}</div>
+                            </SectionBody>
+                            <SectionBody>
+                              <div style={{ fontSize: 8, letterSpacing: 2, color: C.inkFaint, textTransform: "uppercase", marginBottom: 6 }}>Style Override</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1, minWidth: 36, flexShrink: 0 }}>Alias</span>
+                                  <input type="text" placeholder={node.shortLabel}
+                                    value={nodeCustomStyles[`${latticeId}:${node.id}`]?.labelAlias ?? ""}
+                                    onChange={e => setNodeCustomStyles(prev => ({
+                                      ...prev, [`${latticeId}:${node.id}`]: { ...(prev[`${latticeId}:${node.id}`] ?? {}), labelAlias: e.target.value || undefined }
+                                    }))}
+                                    style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, color: C.ink, fontSize: 10, padding: "3px 6px", outline: "none", fontFamily: "'Courier New', monospace" }} />
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 9, color: C.inkFaint, letterSpacing: 1, minWidth: 36, flexShrink: 0 }}>Color</span>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                    {["#ef4444","#f97316","#ca8a04","#16a34a","#0284c7","#7c3aed","#db2777","#0891b2"].map(swatchCol => {
+                                      const key = `${latticeId}:${node.id}`;
+                                      const active = nodeCustomStyles[key]?.color === swatchCol;
+                                      return (
+                                        <div key={swatchCol}
+                                          onClick={() => setNodeCustomStyles(prev => ({ ...prev, [key]: { ...(prev[key] ?? {}), color: active ? undefined : swatchCol } }))}
+                                          style={{ width: 16, height: 16, borderRadius: "50%", cursor: "pointer", background: swatchCol, flexShrink: 0, border: active ? `2.5px solid ${C.ink}` : `1.5px solid transparent`, boxSizing: "border-box", boxShadow: active ? `0 0 0 1px #fff inset` : "none", transition: "border 0.1s" }} />
+                                      );
+                                    })}
+                                    {nodeCustomStyles[`${latticeId}:${node.id}`]?.color && (
+                                      <div onClick={() => setNodeCustomStyles(prev => { const next = { ...prev }; if (next[`${latticeId}:${node.id}`]) delete next[`${latticeId}:${node.id}`].color; return next; })}
+                                        style={{ width: 16, height: 16, borderRadius: "50%", cursor: "pointer", background: C.bg, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: C.inkFaint }}>×</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </SectionBody>
+                          </Section>
+                          <Section label="Info" depth={1} defaultOpen={false}>
+
+                            <Section label="Identity" depth={2} defaultOpen={false}>
+                              <SectionRow label="Group"  value={latticeLabel} />
+                              <SectionRow label="Type"   value={cyclicLabel} />
+                              <SectionRow label="Normal" value={node.isNormal ? "yes ✓" : "no"} />
+                              {node.isCyclic && node.order > 1 && (() => {
+                                const SUB = "₀₁₂₃₄₅₆₇₈₉";
+                                const sub = x => String(x).split("").map(d => SUB[parseInt(d)]??d).join("");
+                                return <SectionRow label="Iso" value={`ℤ${sub(node.order)}`} accent={col} />;
+                              })()}
+                            </Section>
+                            <Section label="Metrics" depth={2} defaultOpen={false}>
+                              <SectionRow label="Order" value={String(node.order)} accent={col} />
+                              <SectionRow label="Level" value={String(node.level)} />
+                              <SectionRow label="Index" value={String(indexVal)} />
+                            </Section>
+                            <Section label="Elements" depth={2} defaultOpen={false} badge={node.elements.length}>
+                              <SectionBody>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                  {node.elements.map((el, i) => (
+                                    <span key={i} style={{ fontSize: 11, color: col, fontWeight: "700", fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "2px 7px", border: `1px solid ${C.border}` }}>{el}</span>
+                                  ))}
+                                </div>
+                              </SectionBody>
+                            </Section>
+                            <Section label="Generators" depth={2} defaultOpen={false} badge={node.generators.length}>
+                              <SectionBody>
+                                {node.generators.length === 0
+                                  ? <span style={{ fontSize: 11, color: C.inkFaint }}>∅ trivial</span>
+                                  : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      {(node.generatorLabels ?? node.generators).map((g, i) => (
+                                        <div key={i} style={{ fontSize: 11, color: C.inkMid, fontFamily: "'Courier New', monospace", background: C.panelBg, borderRadius: 3, padding: "3px 8px", border: `1px solid ${C.border}` }}>⟨{g.join(", ")}⟩</div>
+                                      ))}
+                                    </div>
+                                }
+                              </SectionBody>
+                            </Section>
+                            <Section label="Notes & Attributes" depth={1} defaultOpen={false}>
                               <SectionBody>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                   <div>
@@ -6173,7 +6184,6 @@ export default function App() {
                                     <textarea 
                                       value={node.description || ''}
                                       onChange={e => {
-                                        // You'll need to add this function
                                         updateNodeDescription(latticeId, node.id, e.target.value);
                                       }}
                                       placeholder="Add a description for this node..."
@@ -6194,17 +6204,17 @@ export default function App() {
                                       }}
                                     />
                                   </div>
-                                </div>
+                                </div>cd
                               </SectionBody>
                             </Section>
                           </Section>
-                      </Section>
-                    );
-                  })}
-                </div>
-              : <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>Click nodes to select them.</div>
-            }
-          </Pane>
+                        </Section>
+                      );
+                    })}
+                  </div>
+                : <div style={{ fontSize: 11, color: C.inkFaint, fontStyle: "italic" }}>Click nodes to select them.</div>
+              }
+            </Pane>
 
           </div>
         )}

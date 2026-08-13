@@ -1,0 +1,3043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Source → Psinite Inspector</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f4f6f4;
+    color: #0b151e;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+  header {
+    background: #b7d0de;
+    border-bottom: 1px solid #93b5c8;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    gap: 12px;
+  }
+  .lang-selector {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 3px;
+    color: #0b151e;
+    background: none;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.1s;
+  }
+  header h1:hover { background: rgba(0,0,0,0.06); }
+  header h1 .lang-caret { font-size: 10px; opacity: 0.6; }
+  .lang-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: #fff;
+    border: 1px solid #93b5c8;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(11,21,30,0.18);
+    z-index: 200;
+    min-width: 180px;
+    overflow: hidden;
+  }
+  .lang-menu button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: #1e3d54;
+    border: none;
+    border-radius: 0;
+    padding: 8px 12px;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .lang-menu button:hover { background: #d0e4ee; }
+  .lang-menu button.active { background: #cadbdc; }
+  .lang-menu button .status { font-size: 9px; color: #3a6278; font-weight: 400; }
+  header .subtitle {
+    font-size: 10px;
+    color: #1e3d54;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  main { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; min-height: 0; }
+  .pane { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #93b5c8; min-height: 0; min-width: 0; }
+  .pane:last-child { border-right: none; }
+  .pane-header {
+    background: #adc8d8;
+    padding: 9px 16px;
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2.5px;
+    color: #1e3d54;
+    text-transform: uppercase;
+    border-bottom: 1px solid #93b5c8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    gap: 8px;
+  }
+  .pane-content { flex: 1; overflow: auto; padding: 16px; min-height: 0; min-width: 0; }
+  textarea {
+    width: 100%;
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    border: none;
+    padding: 14px 16px;
+    background: #fff;
+    color: #0b151e;
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    min-height: 200px;
+  }
+  .actions { display: flex; gap: 8px; padding: 12px 16px; flex-shrink: 0; background: #cadbdc; border-top: 1px solid #93b5c8; align-items: center; }
+  button {
+    background: #1e3d54;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  button:hover { background: #0b151e; }
+  button:disabled { background: #93b5c8; cursor: not-allowed; }
+  button.secondary { background: transparent; color: #1e3d54; border: 1px solid #93b5c8; }
+  button.secondary:hover:not(:disabled) { background: #d0e4ee; }
+  button.tiny { padding: 4px 10px; font-size: 9px; letter-spacing: 1.5px; }
+  .error {
+    background: #fef2f2;
+    border-left: 3px solid #ef4444;
+    color: #991b1b;
+    padding: 8px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    margin: 0 16px 8px;
+  }
+  .summary-bar {
+    background: #fff;
+    border: 1px solid #93b5c8;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #1e3d54;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .summary-bar strong { color: #0b151e; font-size: 13px; }
+  .mode-bar {
+    background: #fff;
+    border: 1px solid #93b5c8;
+    border-radius: 6px;
+    padding: 4px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 4px;
+    font-family: 'Courier New', monospace;
+  }
+  .mode-bar button {
+    flex: 1;
+    background: transparent;
+    color: #1e3d54;
+    border: 1px solid transparent;
+    padding: 7px 10px;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-radius: 4px;
+    transition: background 0.1s, border-color 0.1s;
+    line-height: 1.4;
+  }
+  .mode-bar button .sub {
+    display: block;
+    font-size: 8px;
+    letter-spacing: 0.5px;
+    color: #3a6278;
+    text-transform: none;
+    margin-top: 2px;
+    font-weight: 400;
+  }
+  .mode-bar button.active {
+    background: #1e3d54;
+    color: #fff;
+    border-color: #1e3d54;
+  }
+  .mode-bar button.active .sub { color: #b7d0de; }
+  .mode-bar button:hover:not(.active) { background: #f4f6f4; }
+  .lattice-card {
+    background: #fff;
+    border: 1px solid #93b5c8;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .lattice-card h3 {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+    color: #0b151e;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .lattice-card h3 .scope-name {
+    cursor: text;
+    padding: 1px 4px;
+    border-radius: 3px;
+    transition: background 0.1s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .lattice-card h3 .scope-name:hover { background: #d0e4ee; }
+  .lattice-card h3 .scope-name-input {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #0b151e;
+    background: #fff;
+    border: 1px solid #93b5c8;
+    border-radius: 3px;
+    padding: 1px 4px;
+    outline: none;
+    min-width: 100px;
+    max-width: 260px;
+  }
+  .lattice-card h3 .badge {
+    font-size: 9px;
+    background: #b7d0de;
+    color: #1e3d54;
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: 1.5px;
+    flex-shrink: 0;
+  }
+  .lattice-card .kind-tag {
+    font-size: 9px;
+    color: #3a6278;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .kind-tag .toggles { display: inline-flex; gap: 6px; }
+  .arrow-toggle, .radial-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    background: #f4f6f4;
+    border: 1px solid #93b5c8;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #1e3d54;
+    user-select: none;
+    transition: background 0.12s;
+  }
+  .arrow-toggle:hover, .radial-toggle:hover { background: #d0e4ee; }
+  .arrow-toggle.on, .radial-toggle.on { background: #1e3d54; color: #fff; border-color: #1e3d54; }
+  .arrow-toggle .icon, .radial-toggle .icon { font-size: 12px; line-height: 1; font-weight: 700; }
+  .lattice-card svg.card-svg { display: block; margin: 0 auto; max-width: 100%; user-select: none; }
+  .lattice-card svg.card-svg .card-node { cursor: grab; }
+  .lattice-card svg.card-svg .card-node.dragging circle { stroke-width: 3.5; filter: drop-shadow(0 0 4px rgba(11,21,30,0.4)); }
+  .item-list {
+    margin-top: 10px;
+    border-top: 1px solid #cadbdc;
+    padding-top: 8px;
+  }
+  .item-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    border-bottom: 1px solid #f0f4f4;
+    min-width: 0;
+  }
+  .item-row:last-child { border-bottom: none; }
+  .item-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .item-left, .item-right {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background 0.1s;
+    min-width: 0;
+  }
+  .item-left:hover, .item-right:hover { background: #d0e4ee; }
+  .item-left {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .item-right {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 55%;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .item-name {
+    font-weight: 600;
+    color: #0b151e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .item-type { color: #3a6278; font-size: 10px; flex-shrink: 0; }
+  .item-value {
+    color: #1e3d54;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .item-edit-hint { font-size: 8px; color: #93b5c8; letter-spacing: 0.5px; flex-shrink: 0; }
+  .item-rename-input {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: #0b151e;
+    background: #fff;
+    border: 1px solid #93b5c8;
+    border-radius: 3px;
+    padding: 1px 4px;
+    outline: none;
+    min-width: 80px;
+    max-width: 200px;
+  }
+  details {
+    margin-top: 12px;
+    background: #f4f6f4;
+    border: 1px solid #93b5c8;
+    border-radius: 6px;
+  }
+  summary {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #1e3d54;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  summary:hover { background: #d0e4ee; }
+  pre.json {
+    margin: 0;
+    padding: 12px;
+    background: #0b151e;
+    color: #b7d0de;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    overflow: auto;
+    max-height: 400px;
+    line-height: 1.5;
+    white-space: pre;
+  }
+  .empty-state {
+    color: #3a6278;
+    font-size: 12px;
+    font-style: italic;
+    padding: 40px 20px;
+    text-align: center;
+  }
+  .empty-state .hint {
+    margin-top: 12px;
+    font-size: 10px;
+    color: #93b5c8;
+    font-style: normal;
+    font-family: 'Courier New', monospace;
+  }
+  .download-split {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    border-radius: 4px;
+    overflow: visible;
+  }
+  .download-split > button {
+    border-radius: 4px 0 0 4px;
+    border-right: 1px solid rgba(255,255,255,0.2);
+  }
+  .download-split > button.toggle {
+    border-radius: 0 4px 4px 0;
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+  .download-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: #fff;
+    border: 1px solid #93b5c8;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(11,21,30,0.18);
+    z-index: 50;
+    min-width: 220px;
+    overflow: hidden;
+  }
+  .download-menu button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: #1e3d54;
+    border: none;
+    border-radius: 0;
+    padding: 8px 12px;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+  }
+  .download-menu button:hover { background: #d0e4ee; }
+  .download-menu .desc {
+    display: block;
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    color: #3a6278;
+    text-transform: none;
+    margin-top: 2px;
+  }
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(11,21,30,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(11,21,30,0.20);
+    width: 380px;
+    max-width: 92vw;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .modal h2 {
+    margin: 0;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2.5px;
+    color: #1e3d54;
+    text-transform: uppercase;
+  }
+  .modal .field { display: flex; flex-direction: column; gap: 5px; }
+  .modal .field label {
+    font-size: 9px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1.5px;
+    color: #3a6278;
+    text-transform: uppercase;
+  }
+  .modal input[type="text"], .modal textarea {
+    background: #f4f6f4;
+    border: 1px solid #93b5c8;
+    border-radius: 4px;
+    padding: 6px 9px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #0b151e;
+    outline: none;
+  }
+  .modal .elements-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 8px;
+    background: #f4f6f4;
+    border: 1px solid #93b5c8;
+    border-radius: 4px;
+    min-height: 40px;
+  }
+  .modal .element-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: #b7d0de;
+    color: #0b151e;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    border: 1px solid #93b5c8;
+  }
+  .modal .element-chip button {
+    background: none;
+    border: none;
+    color: #1e3d54;
+    cursor: pointer;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+  .modal .add-element-row { display: flex; gap: 6px; }
+  .modal .add-element-row input { flex: 1; }
+  .modal .add-element-row button { background: #16a34a; padding: 6px 14px; }
+  .modal .add-element-row button:hover { background: #15803d; }
+  .modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="lang-selector">
+      <h1 id="lang-button">
+        <span id="lang-label">PYTHON</span>
+        <span class="lang-caret">▾</span>
+      </h1>
+      <div class="lang-menu" id="lang-menu" style="display:none">
+        <button data-lang="python"><span>Python</span><span class="status">ready</span></button>
+        <button data-lang="javascript"><span>JavaScript</span><span class="status">soon</span></button>
+        <button data-lang="typescript"><span>TypeScript</span><span class="status">soon</span></button>
+        <button data-lang="ruby"><span>Ruby</span><span class="status">soon</span></button>
+        <button data-lang="go"><span>Go</span><span class="status">soon</span></button>
+        <button data-lang="rust"><span>Rust</span><span class="status">soon</span></button>
+      </div>
+    </div>
+    <span class="subtitle">static structure extractor</span>
+  </header>
+  <main>
+    <div class="pane left">
+      <div class="pane-header">Python Source</div>
+      <textarea id="code-input" spellcheck="false"></textarea>
+      <div id="error-display"></div>
+      <div class="actions">
+        <button id="analyze-btn">Analyze →</button>
+        <button id="example-btn" class="secondary">Load Example</button>
+        <button id="clear-btn" class="secondary">Clear</button>
+      </div>
+    </div>
+    <div class="pane right">
+      <div class="pane-header">
+        <span id="results-label">Extracted Lattices</span>
+        <div class="download-split" id="download-split">
+          <button id="download-btn" class="secondary tiny" disabled>↓ Download .psinite</button>
+          <button id="download-toggle" class="secondary tiny toggle" disabled title="Choose format">▾</button>
+          <div class="download-menu" id="download-menu" style="display:none">
+            <button data-mode="base">
+              Base graphs only
+              <span class="desc">Lattices with internal node connections, no cross-scope morphisms</span>
+            </button>
+            <button data-mode="morphisms">
+              With auto-morphisms
+              <span class="desc">Adds automatically-detected strands between scopes sharing names</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="pane-content" id="output">
+        <div class="empty-state">
+          Paste Python code on the left and click <strong>Analyze</strong> to extract structure.
+          <div class="hint">Each scope (module, class, function) becomes one lattice</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+'use strict';
+
+class ParseError extends Error {
+  constructor(msg) { super(msg); this.name = 'ParseError'; }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function truncate(s, n) {
+  s = String(s);
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+const KIND_COLORS = {
+  variable:    '#f97316',
+  parameter:   '#a855f7',
+  attribute:   '#14b8a6',
+  function:    '#0284c7',
+  class_:      '#16a34a',
+  method:      '#0ea5e9',
+  loopvar:     '#ec4899',
+  typealias:   '#64748b',
+  enum_member: '#ca8a04',
+  baseclass:   '#84cc16',
+  import:      '#7c3aed',
+  docstring:   '#94a3b8',
+  expr:        '#0891b2',
+};
+
+const KIND_LABELS = {
+  variable:    'var',
+  parameter:   'param',
+  attribute:   'attr',
+  function:    'func',
+  class_:      'class',
+  method:      'method',
+  loopvar:     'for',
+  typealias:   'alias',
+  enum_member: 'enum',
+  baseclass:   'base',
+  import:      'import',
+  docstring:   'doc',
+  expr:        'expr',
+};
+
+const KEYWORDS = new Set([
+  'def','class','for','in','if','else','elif','return','from','import','as',
+  'lambda','and','or','not','is','pass','yield','with','global','nonlocal',
+  'try','except','finally','raise','while','break','continue','async','await'
+]);
+
+const STRING_PREFIX = /^(?:[fFbBrRuU]{1,2})/;
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0, line = 1, col = 1;
+  const N = src.length;
+
+  function err(msg) { throw new ParseError(`Line ${line}:${col}: ${msg}`); }
+
+  while (i < N) {
+    const c = src[i];
+    const startCol = col;
+
+    if (c === ' ' || c === '\t' || c === '\r') { i++; col++; continue; }
+    if (c === '\n') {
+      tokens.push({ type: 'NEWLINE', line, col: startCol });
+      i++; line++; col = 1;
+      continue;
+    }
+    if (c === '#') { while (i < N && src[i] !== '\n') i++; continue; }
+
+    // ---------- Strings ----------
+    // Triple-quoted
+    if ((src[i] === '"' || src[i] === "'") &&
+        src[i+1] === src[i] && src[i+2] === src[i]) {
+      const triple = src.slice(i, i + 3);
+      const end = src.indexOf(triple, i + 3);
+      if (end === -1) err('unterminated triple-quoted string');
+      const s = src.slice(i + 3, end);  // raw content, no escape processing
+      const newlines = (s.match(/\n/g) || []).length;
+      i = end + 3;
+      if (newlines > 0) {
+        const lastNewline = s.lastIndexOf('\n');
+        const afterLastNewline = s.slice(lastNewline + 1);
+        line += newlines;
+        col = 1 + afterLastNewline.length + 3;
+      } else {
+        col = startCol + 3 + s.length + 3;
+      }
+      tokens.push({ type: 'STRING', value: s, kind: 'string', line, col: startCol });
+      continue;
+    }
+
+    // Single-line (with optional prefix)
+    if (c === '"' || c === "'") {
+      // Detect prefix (r, f, b, u, etc.)
+      let prefix = '';
+      for (let k = 1; k <= 2; k++) {
+        const ch = i - k >= 0 ? src[i - k] : '';
+        if (ch && /[fFbBrRuU]/.test(ch)) prefix = ch + prefix;
+        else break;
+      }
+      const before = i - prefix.length - 1 >= 0 ? src[i - prefix.length - 1] : '';
+      const isPrefix = prefix && !/[a-zA-Z0-9_]/.test(before);
+
+      const quote = c;
+      let s = '';
+      if (isPrefix) {
+        // Remove any previously emitted prefix token
+        for (let k = 0; k < prefix.length; k++) {
+          if (tokens.length && tokens[tokens.length - 1].type === 'NAME') tokens.pop();
+        }
+      }
+
+      i++; col++;  // skip opening quote
+      // Read until matching quote – NO escape processing at all
+      while (i < N && src[i] !== quote) {
+        if (src[i] === '\n') {
+          s += '\n';
+          i++; line++; col = 1;
+        } else {
+          s += src[i];
+          i++; col++;
+        }
+      }
+      if (i >= N) err('unterminated string');
+      i++; col++;  // skip closing quote
+
+      let kind = 'string';
+      if (isPrefix) {
+        const lower = prefix.toLowerCase();
+        if (lower.includes('f')) kind = 'fstring';
+        else if (lower.includes('b')) kind = 'bytes';
+        else if (lower.includes('r')) kind = 'rawstring';
+      }
+      tokens.push({ type: 'STRING', value: s, kind, line, col: startCol });
+      continue;
+    }
+
+    // ---------- Numbers ----------
+    if (c >= '0' && c <= '9') {
+      let s = '';
+      while (i < N && ((src[i] >= '0' && src[i] <= '9') || src[i] === '.')) {
+        s += src[i]; i++; col++;
+      }
+      tokens.push({ type: 'NUMBER', value: parseFloat(s), line, col: startCol });
+      continue;
+    }
+
+    // ---------- Names & keywords ----------
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_') {
+      let s = '';
+      while (i < N && ((src[i] >= 'a' && src[i] <= 'z') ||
+                        (src[i] >= 'A' && src[i] <= 'Z') ||
+                        (src[i] >= '0' && src[i] <= '9') ||
+                        src[i] === '_')) {
+        s += src[i]; i++; col++;
+      }
+      if (s === 'True') tokens.push({ type: 'BOOL', value: true, line, col: startCol });
+      else if (s === 'False') tokens.push({ type: 'BOOL', value: false, line, col: startCol });
+      else if (s === 'None') tokens.push({ type: 'NONE', line, col: startCol });
+      else if (KEYWORDS.has(s)) tokens.push({ type: 'KEYWORD', value: s, line, col: startCol });
+      else tokens.push({ type: 'NAME', value: s, line, col: startCol });
+      continue;
+    }
+
+    // ---------- Multi‑character operators ----------
+    if (c === '-' && src[i+1] === '>') { tokens.push({ type: 'ARROW', line, col: startCol }); i += 2; col += 2; continue; }
+    if (c === '*' && src[i+1] === '*') { tokens.push({ type: 'STARSTAR', line, col: startCol }); i += 2; col += 2; continue; }
+    if (c === '/' && src[i+1] === '/') { tokens.push({ type: 'DSLASH', line, col: startCol }); i += 2; col += 2; continue; }
+    if (c === '<' && src[i+1] === '=') { tokens.push({ type: 'LE', line, col: startCol }); i += 2; col += 2; continue; }
+    if (c === '>' && src[i+1] === '=') { tokens.push({ type: 'GE', line, col: startCol }); i += 2; col += 2; continue; }
+    if (c === '=' && src[i+1] === '=') { tokens.push({ type: 'EQEQ', line, col: startCol }); i += 2; col += 2; continue; }
+    if (c === '!' && src[i+1] === '=') { tokens.push({ type: 'NEQ', line, col: startCol }); i += 2; col += 2; continue; }
+
+    // ---------- Single‑character punctuation (including '=' and '!' as fallback) ----------
+    const simple = {
+      '(': 'LPAREN', ')': 'RPAREN', '[': 'LBRACK', ']': 'RBRACK',
+      '{': 'LBRACE', '}': 'RBRACE', ',': 'COMMA', ':': 'COLON',
+      ';': 'SEMI', '.': 'DOT', '+': 'PLUS',
+      '-': 'MINUS', '*': 'STAR', '/': 'SLASH', '%': 'PERCENT',
+      '|': 'PIPE', '@': 'AT',
+      '=': 'EQUAL',   // <-- fallback for single '='
+      '!': 'BANG'     // <-- fallback for single '!' (should not appear, but safe)
+    };
+    if (simple[c]) {
+      tokens.push({ type: simple[c], line, col: startCol });
+      i++; col++;
+      continue;
+    }
+
+    err(`unexpected character: ${c}`);
+  }
+
+  tokens.push({ type: 'EOF', line, col });
+  return tokens;
+}
+
+function addIndentation(tokens) {
+  const result = [];
+  const indentStack = [0];
+
+  function flushDedentsBefore(anchorTok) {
+    while (indentStack.length > 1) {
+      indentStack.pop();
+      result.push({ type: 'DEDENT', line: anchorTok.line, col: anchorTok.col });
+    }
+  }
+
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+
+    if (tok.type === 'NEWLINE') {
+      if (result.length > 0 && result[result.length - 1].type === 'NEWLINE') continue;
+      result.push(tok);
+
+      let j = i + 1;
+      while (j < tokens.length && tokens[j].type === 'NEWLINE') j++;
+      if (j >= tokens.length || tokens[j].type === 'EOF') continue;
+
+      const nextTok = tokens[j];
+      const indent = nextTok.col - 1;
+      const top = indentStack[indentStack.length - 1];
+
+      if (indent > top) {
+        indentStack.push(indent);
+        result.push({ type: 'INDENT', line: nextTok.line, col: nextTok.col });
+      } else if (indent < top) {
+        while (indentStack.length > 1 && indentStack[indentStack.length - 1] > indent) {
+          indentStack.pop();
+          result.push({ type: 'DEDENT', line: nextTok.line, col: nextTok.col });
+        }
+        if (indentStack[indentStack.length - 1] !== indent) {
+          throw new ParseError(`Indentation mismatch at line ${nextTok.line}: column ${nextTok.col}`);
+        }
+      }
+      continue;
+    }
+
+    if (tok.type === 'EOF') {
+      flushDedentsBefore(tok);
+      result.push(tok);
+      continue;
+    }
+
+    result.push(tok);
+  }
+
+  return result;
+}
+
+class Parser {
+  constructor(tokens) {
+    this.tokens = addIndentation(tokens);
+    this.pos = 0;
+  }
+
+  peek(off = 0) { return this.tokens[this.pos + off]; }
+  consume() { return this.tokens[this.pos++]; }
+  eof() { return this.peek().type === 'EOF'; }
+
+  tokStr() {
+    const t = this.peek();
+    if (t.value !== undefined) return `${t.type}(${JSON.stringify(t.value)})`;
+    return t.type;
+  }
+
+  expect(type, value) {
+    const tok = this.peek();
+    if (tok.type !== type || (value !== undefined && tok.value !== value)) {
+      throw new ParseError(`Expected ${type}${value !== undefined ? `(${value})` : ''}, got ${this.tokStr()} at line ${tok.line}`);
+    }
+    return this.consume();
+  }
+
+  match(type, value) {
+    const tok = this.peek();
+    if (tok.type === type && (value === undefined || tok.value === value)) return this.consume();
+    return null;
+  }
+
+  tokensToText(toks) {
+    return toks.map(t => {
+      if (t.value !== undefined) {
+        if (t.type === 'STRING') return JSON.stringify(t.value);
+        return String(t.value);
+      }
+      const map = {
+        LPAREN: '(', RPAREN: ')', LBRACK: '[', RBRACK: ']',
+        LBRACE: '{', RBRACE: '}', COMMA: ',', COLON: ':',
+        DOT: '.', EQUAL: '=', ARROW: '->', PIPE: '|',
+        PLUS: '+', MINUS: '-', STAR: '*', STARSTAR: '**', SLASH: '/', DSLASH: '//',
+        PERCENT: '%', LT: '<', LE: '<=', GT: '>', GE: '>=',
+        AT: '@'
+      };
+      return map[t.type] || t.type;
+    }).join(' ');
+  }
+
+  consumeDecorators() {
+    const decorators = [];
+    while (this.peek().type === 'AT') {
+      this.consume();
+      const toks = [];
+      let depth = 0;
+      while (this.pos < this.tokens.length) {
+        const t = this.peek();
+        if (t.type === 'NEWLINE' || t.type === 'EOF') break;
+        if (t.type === 'LPAREN' || t.type === 'LBRACK' || t.type === 'LBRACE') depth++;
+        if (t.type === 'RPAREN' || t.type === 'RBRACK' || t.type === 'RBRACE') depth--;
+        toks.push(this.consume());
+        if (depth === 0 && t.type === 'KEYWORD' && (t.value === 'def' || t.value === 'class')) break;
+      }
+      decorators.push(this.tokensToText(toks));
+      while (this.peek().type === 'NEWLINE') this.consume();
+    }
+    return decorators;
+  }
+
+  parseModule() {
+    const body = [];
+    while (!this.eof()) {
+      const t = this.peek();
+      if (t.type === 'NEWLINE' || t.type === 'INDENT' || t.type === 'DEDENT') {
+        this.consume();
+        continue;
+      }
+      const stmts = this.parseStatementBlock();
+      for (const s of stmts) if (s) body.push(s);
+    }
+    return { type: 'Module', body };
+  }
+
+  parseStatementBlock() {
+    const stmts = [];
+    while (true) {
+      const t = this.peek();
+      if (t.type === 'EOF' || t.type === 'DEDENT' || t.type === 'INDENT') break;
+      if (t.type === 'NEWLINE') { this.consume(); continue; }
+      const s = this.parseStatement();
+      if (s) stmts.push(s);
+    }
+    return stmts;
+  }
+
+  parseStatement() {
+    let decorators = [];
+    if (this.peek().type === 'AT') {
+      decorators = this.consumeDecorators();
+    }
+
+    const t = this.peek();
+    if (t.type === 'KEYWORD') {
+      switch (t.value) {
+        case 'def': {
+          const r = this.parseFunctionDef(false);
+          if (decorators.length) r.decorators = decorators;
+          return r;
+        }
+        case 'class': {
+          const r = this.parseClassDef();
+          if (decorators.length) r.decorators = decorators;
+          return r;
+        }
+        case 'for':     return this.parseFor();
+        case 'if':      return this.parseIf();
+        case 'return':  return this.parseReturn();
+        case 'pass':    this.consume(); return { type: 'Pass' };
+        case 'from':    return this.parseImport();
+        case 'import':  return this.parseImport();
+        case 'while':   return this.parseWhile();
+        case 'with':    return this.parseWith();
+        case 'try':     return this.parseTry();
+        default:        return this.parseSimpleStatement();
+      }
+    }
+    if (decorators.length) {
+      return { type: 'Expr', value: { type: 'Constant', value: decorators.join(' '), kind: 'string' } };
+    }
+    return this.parseSimpleStatement();
+  }
+
+  parseSimpleStatement() {
+    const stmts = [];
+    stmts.push(this.parseOneSimple());
+
+    while (this.match('SEMI')) {
+      const t = this.peek();
+      if (t.type === 'NEWLINE' || t.type === 'EOF' || t.type === 'INDENT' || t.type === 'DEDENT') break;
+      stmts.push(this.parseOneSimple());
+    }
+    this.match('NEWLINE');
+    return stmts.length === 1 ? stmts[0] : { type: 'Sequence', body: stmts };
+  }
+
+  parseOneSimple() {
+    const saved = this.pos;
+    const target = this.parseAssignmentTarget();
+    if (target) {
+      let annotation = null;
+      if (this.match('COLON')) annotation = this.parseTypeAnnotation();
+      if (this.match('EQUAL')) {
+        const value = this.parseExpression();
+        if (annotation) {
+          return { type: 'AnnAssign', target, annotation, value };
+        }
+        return { type: 'Assign', target, value };
+      }
+      if (annotation) {
+        return { type: 'AnnAssign', target, annotation, value: null };
+      }
+      this.pos = saved;
+    }
+    const value = this.parseExpression();
+    return { type: 'Expr', value };
+  }
+
+  parseAssignmentTarget() {
+    const t = this.peek();
+    if (t.type !== 'NAME') return null;
+    const first = this.consume();
+    let target = { type: 'Name', id: first.value };
+    while (this.match('DOT')) {
+      const attr = this.expect('NAME');
+      target = { type: 'Attribute', value: target, attr: attr.value };
+    }
+    return target;
+  }
+
+  parseTypeAnnotation() {
+    const startToks = [];
+    let depth = 0;
+    while (this.pos < this.tokens.length) {
+      const t = this.peek();
+      if (depth === 0 && (t.type === 'EQUAL' || t.type === 'NEWLINE' || t.type === 'COMMA' || t.type === 'RPAREN' || t.type === 'SEMI')) break;
+      if (t.type === 'LPAREN' || t.type === 'LBRACK' || t.type === 'LBRACE') depth++;
+      if (t.type === 'RPAREN' || t.type === 'RBRACK' || t.type === 'RBRACE') depth--;
+      startToks.push(this.consume());
+      if (depth === 0 && (t.type === 'NAME' || t.type === 'KEYWORD')) {
+        const n = this.peek();
+        if (n.type !== 'DOT' && n.type !== 'LBRACK' && n.type !== 'PIPE') break;
+      }
+    }
+    return { type: 'TypeAnnotation', name: this.tokensToText(startToks) };
+  }
+
+  parseExpression() { return this.parseTernary(); }
+
+  parseTernary() {
+    const value = this.parseOr();
+    if (this.match('KEYWORD', 'if')) {
+      const test = this.parseOr();
+      this.expect('KEYWORD', 'else');
+      const orelse = this.parseOr();
+      return { type: 'IfExp', test, body: value, orelse };
+    }
+    return value;
+  }
+
+  parseOr() {
+    let left = this.parseAnd();
+    while (this.match('KEYWORD', 'or')) {
+      const right = this.parseAnd();
+      left = { type: 'BoolOp', op: 'or', left, right };
+    }
+    return left;
+  }
+
+  parseAnd() {
+    let left = this.parseNot();
+    while (this.match('KEYWORD', 'and')) {
+      const right = this.parseNot();
+      left = { type: 'BoolOp', op: 'and', left, right };
+    }
+    return left;
+  }
+
+  parseNot() {
+    if (this.match('KEYWORD', 'not')) {
+      return { type: 'UnaryOp', op: 'not', operand: this.parseNot() };
+    }
+    return this.parseComparison();
+  }
+
+  parseComparison() {
+    let left = this.parseBitor();
+    while (true) {
+      const t = this.peek();
+      let op = null;
+      if (t.type === 'LT') op = '<';
+      else if (t.type === 'GT') op = '>';
+      else if (t.type === 'LE') op = '<=';
+      else if (t.type === 'GE') op = '>=';
+      else if (t.type === 'EQEQ') op = '==';
+      else if (t.type === 'NEQ') op = '!=';
+      else if (t.type === 'KEYWORD' && t.value === 'is') op = 'is';
+      else if (t.type === 'KEYWORD' && t.value === 'in') op = 'in';
+      else if (t.type === 'KEYWORD' && t.value === 'not') {
+        const next = this.tokens[this.pos + 1];
+        if (next && next.type === 'KEYWORD' && next.value === 'in') {
+          this.consume(); this.consume();
+          const right = this.parseBitor();
+          left = { type: 'Compare', op: 'not in', left, right };
+          continue;
+        }
+      }
+      if (!op) break;
+      this.consume();
+      const right = this.parseBitor();
+      left = { type: 'Compare', op, left, right };
+    }
+    return left;
+  }
+
+  parseBitor() {
+    let left = this.parseBitand();
+    while (this.match('PIPE')) {
+      const right = this.parseBitand();
+      left = { type: 'BinOp', op: '|', left, right };
+    }
+    return left;
+  }
+
+  parseBitand() { return this.parseShift(); }
+  parseShift()  { return this.parseAdditive(); }
+
+  parseAdditive() {
+    let left = this.parseMultiplicative();
+    while (true) {
+      const t = this.peek();
+      if (t.type === 'PLUS' || t.type === 'MINUS') {
+        const op = t.type === 'PLUS' ? '+' : '-';
+        this.consume();
+        const right = this.parseMultiplicative();
+        left = { type: 'BinOp', op, left, right };
+      } else break;
+    }
+    return left;
+  }
+
+  parseMultiplicative() {
+    let left = this.parseUnary();
+    while (true) {
+      const t = this.peek();
+      if (t.type === 'STAR' || t.type === 'SLASH' || t.type === 'PERCENT' || t.type === 'DSLASH') {
+        const op = t.type === 'STAR' ? '*' : t.type === 'SLASH' ? '/' : t.type === 'PERCENT' ? '%' : '//';
+        this.consume();
+        const right = this.parseUnary();
+        left = { type: 'BinOp', op, left, right };
+      } else break;
+    }
+    return left;
+  }
+
+  parseUnary() {
+    const t = this.peek();
+    if (t.type === 'MINUS' || t.type === 'PLUS' || t.type === 'STARSTAR') {
+      const op = t.type === 'MINUS' ? '-' : t.type === 'PLUS' ? '+' : '**';
+      this.consume();
+      return { type: 'UnaryOp', op, operand: this.parseUnary() };
+    }
+    return this.parsePostfix();
+  }
+
+  parsePostfix() {
+    let value = this.parsePrimary();
+    while (true) {
+      const t = this.peek();
+      if (t.type === 'DOT') {
+        this.consume();
+        const attr = this.expect('NAME');
+        value = { type: 'Attribute', value, attr: attr.value };
+      } else if (t.type === 'LPAREN') {
+        this.consume();
+        const args = [];
+        const kwargs = [];
+        while (this.peek().type !== 'RPAREN') {
+          if (this.match('STAR')) {
+            args.push({ type: 'Starred', value: this.parseExpression() });
+          } else {
+            const arg = this.parseExpression();
+            if (this.match('EQUAL')) {
+              const val = this.parseExpression();
+              kwargs.push({ name: arg.id || JSON.stringify(arg), value: val });
+            } else {
+              args.push(arg);
+            }
+          }
+          if (!this.match('COMMA')) break;
+        }
+        this.expect('RPAREN');
+        value = { type: 'Call', func: value, args, kwargs };
+      } else if (t.type === 'LBRACK') {
+        this.consume();
+        const slice = this.parseSubscriptSlice();
+        this.expect('RBRACK');
+        value = { type: 'Subscript', value, slice };
+      } else {
+        break;
+      }
+    }
+    return value;
+  }
+
+  parsePrimary() {
+    const t = this.peek();
+    if (t.type === 'NUMBER')  return { type: 'Constant', value: this.consume().value, kind: 'number' };
+    if (t.type === 'STRING')  return { type: 'Constant', value: this.consume().value, kind: t.kind || 'string' };
+    if (t.type === 'BOOL')    return { type: 'Constant', value: this.consume().value, kind: 'bool' };
+    if (t.type === 'NONE')    { this.consume(); return { type: 'Constant', value: null, kind: 'none' }; }
+    if (t.type === 'LBRACK')  return this.parseListLiteral();
+    if (t.type === 'LBRACE')  return this.parseDictOrSetLiteral();
+    if (t.type === 'LPAREN')  return this.parseTupleOrParen();
+    if (t.type === 'NAME')    return { type: 'Name', id: this.consume().value };
+    if (t.type === 'KEYWORD' && t.value === 'lambda') return this.parseLambda();
+
+    throw new ParseError(`Unexpected ${this.tokStr()} at line ${t.line}`);
+  }
+
+  parseListLiteral() {
+    this.expect('LBRACK');
+    const elements = [];
+    while (this.peek().type !== 'RBRACK') {
+      elements.push(this.parseExpression());
+      if (!this.match('COMMA')) break;
+    }
+    this.expect('RBRACK');
+    return { type: 'List', elements };
+  }
+
+  parseDictOrSetLiteral() {
+    this.expect('LBRACE');
+    if (this.match('RBRACE')) return { type: 'Dict', keys: [], values: [] };
+
+    const first = this.parseExpression();
+    if (this.match('COLON')) {
+      const keys = [first];
+      const values = [this.parseExpression()];
+      while (this.match('COMMA')) {
+        if (this.peek().type === 'RBRACE') break;
+        keys.push(this.parseExpression());
+        this.expect('COLON');
+        values.push(this.parseExpression());
+      }
+      this.expect('RBRACE');
+      return { type: 'Dict', keys, values };
+    }
+    const elements = [first];
+    while (this.match('COMMA')) {
+      if (this.peek().type === 'RBRACE') break;
+      elements.push(this.parseExpression());
+    }
+    this.expect('RBRACE');
+    return { type: 'Set', elements };
+  }
+
+  parseTupleOrParen() {
+    this.expect('LPAREN');
+    if (this.match('RPAREN')) return { type: 'Tuple', elements: [] };
+    const first = this.parseExpression();
+    if (this.match('COMMA')) {
+      const elements = [first];
+      while (this.peek().type !== 'RPAREN') {
+        elements.push(this.parseExpression());
+        if (!this.match('COMMA')) break;
+      }
+      this.expect('RPAREN');
+      return { type: 'Tuple', elements };
+    }
+    this.expect('RPAREN');
+    return first;
+  }
+
+  parseLambda() {
+    this.expect('KEYWORD', 'lambda');
+    const params = [];
+    while (this.peek().type !== 'COLON') {
+      const p = this.parseAssignmentTarget();
+      if (p) params.push(p);
+      if (!this.match('COMMA')) break;
+    }
+    this.expect('COLON');
+    const body = this.parseExpression();
+    return { type: 'Lambda', params, body };
+  }
+
+  parseFunctionDef(isMethod, className = null) {
+    this.expect('KEYWORD', 'def');
+    const nameTok = this.expect('NAME');
+    this.expect('LPAREN');
+    const params = this.parseParameters();
+    this.expect('RPAREN');
+    let returnType = null;
+    if (this.match('ARROW')) {
+      returnType = this.parseTypeAnnotation();
+    }
+    this.expect('COLON');
+    const body = this.parseSuite();
+    return {
+      type: 'FunctionDef',
+      name: nameTok.value,
+      params,
+      returnType,
+      body,
+      isMethod,
+      className,
+    };
+  }
+
+  parseParameters() {
+    const params = [];
+    while (this.peek().type !== 'RPAREN') {
+      const p = this.parseOneParam();
+      if (p) params.push(p);
+      if (!this.match('COMMA')) break;
+    }
+    return params;
+  }
+
+  parseOneParam() {
+    if (this.match('STAR')) {
+      const name = this.expect('NAME');
+      return { type: 'Param', name: name.value, kind: 'vararg', annotation: null, default: null };
+    }
+    if (this.match('STARSTAR')) {
+      const name = this.expect('NAME');
+      return { type: 'Param', name: name.value, kind: 'kwarg', annotation: null, default: null };
+    }
+    const t = this.peek();
+    if (t.type !== 'NAME') return null;
+    const name = this.consume();
+    let annotation = null;
+    if (this.match('COLON')) annotation = this.parseTypeAnnotation();
+    let def = null;
+    if (this.match('EQUAL')) def = this.parseExpression();
+    return {
+      type: 'Param', name: name.value,
+      kind: 'positional', annotation, default: def,
+    };
+  }
+
+  parseClassDef() {
+    this.expect('KEYWORD', 'class');
+    const nameTok = this.expect('NAME');
+    let bases = [];
+    if (this.match('LPAREN')) {
+      while (this.peek().type !== 'RPAREN') {
+        const base = this.parseExpression();
+        bases.push(base);
+        if (!this.match('COMMA')) break;
+      }
+      this.expect('RPAREN');
+    }
+    this.expect('COLON');
+    const body = this.parseSuite();
+    return { type: 'ClassDef', name: nameTok.value, bases, body };
+  }
+
+  parseFor() {
+    this.expect('KEYWORD', 'for');
+    const target = this.parseAssignmentTargetList();
+    this.expect('KEYWORD', 'in');
+    const iter = this.parseExpression();
+    this.expect('COLON');
+    const body = this.parseSuite();
+    return { type: 'For', target, iter, body };
+  }
+
+  parseAssignmentTargetList() {
+    const first = this.parseAssignmentTarget();
+    if (!first) return null;
+    if (this.peek().type !== 'COMMA') return first;
+    return first;
+  }
+
+  parseIf() {
+    this.expect('KEYWORD', 'if');
+    const test = this.parseExpression();
+    this.expect('COLON');
+    const body = this.parseSuite();
+    let orelse = [];
+    if (this.match('KEYWORD', 'elif')) {
+      orelse = [this.parseIf()];
+    } else if (this.match('KEYWORD', 'else')) {
+      this.expect('COLON');
+      orelse = this.parseSuite();
+    }
+    return { type: 'If', test, body, orelse };
+  }
+
+  parseWhile() {
+    this.expect('KEYWORD', 'while');
+    const test = this.parseExpression();
+    this.expect('COLON');
+    const body = this.parseSuite();
+    return { type: 'While', test, body };
+  }
+
+  parseWith() {
+    this.expect('KEYWORD', 'with');
+    const items = [];
+    do {
+      const ctx = this.parseExpression();
+      let target = null;
+      if (this.match('KEYWORD', 'as')) target = this.parseAssignmentTarget();
+      items.push({ ctx, target });
+      if (!this.match('COMMA')) break;
+    } while (true);
+    this.expect('COLON');
+    const body = this.parseSuite();
+    return { type: 'With', items, body };
+  }
+
+  // Parses what's inside `[...]` for a subscript: either a plain index
+  // expression (`x[i]`, `x[i, j]` for multi-dim indexing) or a slice
+  // (`x[a:b]`, `x[:b]`, `x[a:]`, `x[:]`, `x[a:b:c]` — any part may be
+  // omitted).
+  parseSubscriptSlice() {
+    const parseSlicePart = () => {
+      const t = this.peek();
+      if (t.type === 'COLON' || t.type === 'RBRACK') return null;
+      return this.parseExpression();
+    };
+
+    if (this.peek().type === 'COLON') {
+      const lower = null;
+      this.consume(); // COLON
+      const upper = parseSlicePart();
+      let step = null;
+      if (this.match('COLON')) step = parseSlicePart();
+      return { type: 'Slice', lower, upper, step };
+    }
+
+    const first = this.parseExpression();
+
+    if (this.match('COLON')) {
+      const upper = parseSlicePart();
+      let step = null;
+      if (this.match('COLON')) step = parseSlicePart();
+      return { type: 'Slice', lower: first, upper, step };
+    }
+
+    if (this.peek().type === 'COMMA') {
+      const elements = [first];
+      while (this.match('COMMA')) {
+        if (this.peek().type === 'RBRACK') break;
+        elements.push(this.parseExpression());
+      }
+      return { type: 'Tuple', elements };
+    }
+
+    return first;
+  }
+
+  parseTry() {
+    this.expect('KEYWORD', 'try');
+    this.expect('COLON');
+    const body = this.parseSuite();
+    const handlers = [];
+    while (this.match('KEYWORD', 'except')) {
+      let excType = null;
+      let alias = null;
+      if (this.peek().type !== 'COLON') {
+        excType = this.parseExpression();
+        if (this.match('KEYWORD', 'as')) alias = this.expect('NAME').value;
+      }
+      this.expect('COLON');
+      const hbody = this.parseSuite();
+      handlers.push({ excType, alias, body: hbody });
+    }
+    let orelse = [], finalbody = [];
+    if (this.match('KEYWORD', 'else')) { this.expect('COLON'); orelse = this.parseSuite(); }
+    if (this.match('KEYWORD', 'finally')) { this.expect('COLON'); finalbody = this.parseSuite(); }
+    return { type: 'Try', body, handlers, orelse, finalbody };
+  }
+
+  parseReturn() {
+    this.expect('KEYWORD', 'return');
+    if (this.peek().type === 'NEWLINE' || this.peek().type === 'EOF' || this.peek().type === 'SEMI') {
+      return { type: 'Return', value: null };
+    }
+    return { type: 'Return', value: this.parseExpressionOrBareTuple() };
+  }
+
+  // Parses a single expression, or — if followed by a comma outside of any
+  // enclosing brackets — a bare (unparenthesized) tuple, e.g. `1, 2` or
+  // `text.strip(), None`. Python allows this after `return` without parens.
+  parseExpressionOrBareTuple() {
+    const first = this.parseExpression();
+    if (this.peek().type !== 'COMMA') return first;
+    const elements = [first];
+    while (this.match('COMMA')) {
+      const t = this.peek();
+      if (t.type === 'NEWLINE' || t.type === 'EOF' || t.type === 'SEMI') break; // trailing comma
+      elements.push(this.parseExpression());
+    }
+    return { type: 'Tuple', elements };
+  }
+
+  parseImport() {
+    const startToks = [];
+    while (this.pos < this.tokens.length) {
+      const t = this.peek();
+      if (t.type === 'NEWLINE' || t.type === 'EOF' || t.type === 'SEMI') break;
+      startToks.push(this.consume());
+    }
+    return { type: 'Import', text: this.tokensToText(startToks) };
+  }
+
+  parseSuite() {
+    if (this.match('NEWLINE')) {
+      this.expect('INDENT');
+      const body = this.parseStatementBlock();
+      this.expect('DEDENT');
+      return body;
+    }
+    return [this.parseSimpleStatement()];
+  }
+}
+
+function exprToText(e) {
+  if (!e) return '';
+  switch (e.type) {
+    case 'Constant': {
+      if (e.kind === 'string' || e.kind === 'fstring' || e.kind === 'rawstring' || e.kind === 'bytes') {
+        return (e.kind === 'fstring' ? 'f' : e.kind === 'rawstring' ? 'r' : e.kind === 'bytes' ? 'b' : '') + JSON.stringify(e.value);
+      }
+      if (e.kind === 'none') return 'None';
+      if (e.kind === 'bool') return e.value ? 'True' : 'False';
+      return String(e.value);
+    }
+    case 'Name':     return e.id;
+    case 'Attribute': return `${exprToText(e.value)}.${e.attr}`;
+    case 'List':     return `[${e.elements.map(exprToText).join(', ')}]`;
+    case 'Tuple':    return `(${e.elements.map(exprToText).join(', ')})`;
+    case 'Set':      return `{${e.elements.map(exprToText).join(', ')}}`;
+    case 'Dict':     return `{${e.keys.map((k, i) => `${exprToText(k)}: ${exprToText(e.values[i])}`).join(', ')}}`;
+    case 'Call':     return `${exprToText(e.func)}(${[...e.args.map(exprToText), ...e.kwargs.map(k => `${k.name}=${exprToText(k.value)}`)].join(', ')})`;
+    case 'Subscript': return `${exprToText(e.value)}[${exprToText(e.slice)}]`;
+    case 'Slice':    return `${e.lower ? exprToText(e.lower) : ''}:${e.upper ? exprToText(e.upper) : ''}${e.step ? ':' + exprToText(e.step) : ''}`;
+    case 'BinOp':    return `(${exprToText(e.left)} ${e.op} ${exprToText(e.right)})`;
+    case 'UnaryOp':  return `(${e.op}${exprToText(e.operand)})`;
+    case 'Compare':  return `(${exprToText(e.left)} ${e.op} ${exprToText(e.right)})`;
+    case 'BoolOp':   return `(${exprToText(e.left)} ${e.op} ${exprToText(e.right)})`;
+    case 'IfExp':    return `(${exprToText(e.body)} if ${exprToText(e.test)} else ${exprToText(e.orelse)})`;
+    case 'Lambda':   return `lambda ${e.params.map(p => p.name).join(', ')}: ${exprToText(e.body)}`;
+    case 'Starred':  return `*${exprToText(e.value)}`;
+    default:         return `<${e.type}>`;
+  }
+}
+
+function collectFreeNames(e, out) {
+  if (!e) return;
+  switch (e.type) {
+    case 'Name':
+      out.push(e.id);
+      return;
+    case 'Attribute':
+      out.push(`${exprToText(e.value)}.${e.attr}`);
+      return;
+    case 'Constant':
+    case 'Lambda':
+      return;
+    default:
+      for (const k of Object.keys(e)) {
+        const v = e[k];
+        if (Array.isArray(v)) for (const item of v) collectFreeNames(item, out);
+        else if (v && typeof v === 'object' && v.type) collectFreeNames(v, out);
+      }
+  }
+}
+
+function collectCallTargets(e, out) {
+  if (!e) return;
+  if (e.type === 'Call') {
+    let n = '';
+    if (e.func.type === 'Name') n = e.func.id;
+    else if (e.func.type === 'Attribute') n = exprToText(e.func);
+    if (n && n !== 'self' && !n.startsWith('self.')) out.push(n);
+  }
+  for (const k of Object.keys(e)) {
+    const v = e[k];
+    if (Array.isArray(v)) for (const item of v) collectCallTargets(item, out);
+    else if (v && typeof v === 'object' && v.type) collectCallTargets(v, out);
+  }
+}
+
+function parseImportDetails(rawText) {
+  const result = [];
+  if (!rawText) return result;
+  let s = rawText.trim();
+  let fromModule = null;
+  const fromMatch = s.match(/^from\s+([\w.]+)\s+import\s+(.+)$/);
+  if (fromMatch) {
+    fromModule = fromMatch[1];
+    s = fromMatch[2];
+  } else {
+    const importMatch = s.match(/^import\s+(.+)$/);
+    if (importMatch) s = importMatch[1];
+    else return result;
+  }
+  const parts = s.split(',').map(p => p.trim()).filter(p => p.length > 0);
+  for (const part of parts) {
+    const m = part.match(/^([\w.]+)(?:\s+as\s+(\w+))?$/);
+    if (m) {
+      result.push({ name: m[1], alias: m[2] || null, from: fromModule });
+    } else {
+      result.push({ name: part, alias: null, from: fromModule });
+    }
+  }
+  return result;
+}
+
+function extractScopes(ast) {
+  const scopes = [];
+  const callEdges = []; // [{ fromScope, fromNode, toScope, toNode, kind: 'call'|'import' }]
+
+  function visitScope(stmts, parentName, parentKind, scopePath) {
+    const things = [];
+    const deferredRefs = [];
+    const localCalls = []; // { caller: name, target: name }
+    let firstStatementConsumed = false;
+    for (const s of stmts) {
+      if (!firstStatementConsumed && s.type === 'Expr' && s.value &&
+          s.value.type === 'Constant' &&
+          (s.value.kind === 'string' || s.value.kind === 'fstring' || s.value.kind === 'rawstring')) {
+        const ds = s.value.value;
+        const flat = ds.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        things.push({
+          kind: 'docstring',
+          name: 'docstring',
+          type: null,
+          value: flat.length > 80 ? flat.slice(0, 79) + '…' : flat,
+          valueKind: 'string',
+          valueText: ds,
+          _elements: ['docstring'],
+        });
+        firstStatementConsumed = true;
+        continue;
+      }
+      firstStatementConsumed = true;
+      walk(s, things, deferredRefs, parentName, parentKind, scopePath, localCalls);
+    }
+    const nameToIdx = new Map();
+    things.forEach((t, i) => nameToIdx.set(t.name, i));
+    const internalEdges = [];
+    for (const { targetName, refName } of deferredRefs) {
+      const ti = nameToIdx.get(targetName);
+      const ri = nameToIdx.get(refName);
+      if (ti == null || ri == null) continue;
+      if (ti === ri) continue;
+      if (!internalEdges.some(e => e[0] === ti && e[1] === ri)) {
+        internalEdges.push([ti, ri]);
+      }
+    }
+    return { things, internalEdges, localCalls };
+  }
+
+  function walk(node, things, deferredRefs, scopeName, scopeKind, scopePath, localCalls) {
+    if (!node) return;
+
+    if (node.type === 'Assign') {
+      const targetInfo = targetInfoFromNode(node.target);
+      if (targetInfo) {
+        const valueText = exprToText(node.value);
+        const t = {
+          kind: scopeKind === 'class' ? 'attribute' : 'variable',
+          name: targetInfo.name,
+          type: null,
+          value: valueText.length > 60 ? valueText.slice(0, 59) + '…' : valueText,
+          valueKind: node.value.type,
+          valueText,
+          _elements: [targetInfo.name],
+        };
+        const idx = things.length;
+        things.push(t);
+        const refs = [];
+        collectFreeNames(node.value, refs);
+        for (const ref of refs) {
+          if (ref === targetInfo.name) continue;
+          deferredRefs.push({ targetName: targetInfo.name, refName: ref });
+        }
+        const calls = [];
+        collectCallTargets(node.value, calls);
+        for (const c of calls) localCalls.push({ caller: targetInfo.name, target: c });
+      }
+      return;
+    }
+
+    if (node.type === 'AnnAssign') {
+      const targetInfo = targetInfoFromNode(node.target);
+      if (targetInfo) {
+        const valueText = node.value ? exprToText(node.value) : '';
+        const t = {
+          kind: scopeKind === 'class' ? 'attribute' : 'variable',
+          name: targetInfo.name,
+          type: node.annotation.name,
+          value: valueText ? (valueText.length > 60 ? valueText.slice(0, 59) + '…' : valueText) : null,
+          valueKind: node.value ? node.value.type : null,
+          valueText,
+          _elements: [targetInfo.name],
+        };
+        const idx = things.length;
+        things.push(t);
+        if (node.value) {
+          const refs = [];
+          collectFreeNames(node.value, refs);
+          for (const ref of refs) {
+            if (ref === targetInfo.name) continue;
+            deferredRefs.push({ targetName: targetInfo.name, refName: ref });
+          }
+          const calls = [];
+          collectCallTargets(node.value, calls);
+          for (const c of calls) localCalls.push({ caller: targetInfo.name, target: c });
+        }
+      }
+      return;
+    }
+
+    if (node.type === 'FunctionDef') {
+      const kind = scopeKind === 'class' ? 'method' : 'function';
+      const decoratorPrefix = (node.decorators && node.decorators.length)
+        ? '@' + node.decorators.join('\n@') + '\n'
+        : '';
+      const sig = signatureText(node);
+      const t = {
+        kind,
+        name: node.name,
+        type: node.returnType ? node.returnType.name : null,
+        signature: sig,
+        params: node.params.map(p => ({
+          kind: 'parameter', name: p.name,
+          type: p.annotation ? p.annotation.name : null,
+          default: p.default ? exprToText(p.default) : null,
+        })),
+        value: decoratorPrefix + sig,
+        valueKind: 'signature',
+        valueText: decoratorPrefix + sig,
+        _elements: [node.name],
+      };
+      const idx = things.length;
+      things.push(t);
+
+      const subStmts = Array.isArray(node.body) ? node.body : [];
+      const subThings = [];
+      const subDeferred = [];
+      const subCalls = [];
+      const subPath = (scopePath || '') + '/' + node.name;
+      let subFirst = true;
+      for (const s of subStmts) {
+        if (subFirst && s.type === 'Expr' && s.value && s.value.type === 'Constant' &&
+            (s.value.kind === 'string' || s.value.kind === 'fstring' || s.value.kind === 'rawstring')) {
+          const ds = s.value.value;
+          const flat = ds.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+          subThings.push({
+            kind: 'docstring',
+            name: 'docstring',
+            type: null,
+            value: flat.length > 80 ? flat.slice(0, 79) + '…' : flat,
+            valueKind: 'string',
+            valueText: ds,
+            _elements: ['docstring'],
+          });
+          subFirst = false;
+          continue;
+        }
+        subFirst = false;
+        walk(s, subThings, subDeferred, node.name, 'function', subPath, subCalls);
+      }
+      const subNameToIdx = new Map();
+      subThings.forEach((t2, i) => subNameToIdx.set(t2.name, i));
+      const subInternal = [];
+      for (const { targetName, refName } of subDeferred) {
+        const ti = subNameToIdx.get(targetName);
+        const ri = subNameToIdx.get(refName);
+        if (ti == null || ri == null) continue;
+        if (ti === ri) continue;
+        if (!subInternal.some(e => e[0] === ti && e[1] === ri)) {
+          subInternal.push([ti, ri]);
+        }
+      }
+      scopes.push({
+        name: scopeKind === 'class' ? `${scopeName}.${node.name}` : node.name,
+        kind: 'function',
+        things: subThings,
+        internalEdges: subInternal,
+        localCalls: subCalls,
+      });
+      return;
+    }
+
+    if (node.type === 'ClassDef') {
+      const decoratorPrefix = (node.decorators && node.decorators.length)
+        ? '@' + node.decorators.join('\n@') + '\n'
+        : '';
+      const t = {
+        kind: 'class_',
+        name: node.name,
+        bases: node.bases.map(exprToText).filter(b => b && b !== 'object'),
+        basesRaw: node.bases,
+        value: decoratorPrefix + 'class ' + node.name + (node.bases.length ? '(' + node.bases.map(exprToText).join(', ') + ')' : ''),
+        valueKind: 'classdef',
+        valueText: decoratorPrefix + 'class ' + node.name,
+        _elements: [node.name],
+      };
+      const idx = things.length;
+      things.push(t);
+      const subStmts = Array.isArray(node.body) ? node.body : [];
+      const subPath = (scopePath || '') + '/' + node.name;
+      const subResult = visitScope(subStmts, node.name, 'class', subPath);
+      scopes.push({
+        name: node.name,
+        kind: 'class',
+        things: subResult.things,
+        internalEdges: subResult.internalEdges,
+        localCalls: subResult.localCalls,
+      });
+      return;
+    }
+
+    if (node.type === 'Import') {
+      const details = parseImportDetails(node.text);
+      if (details.length === 0) {
+        const name = node.text.trim();
+        things.push({
+          kind: 'import', name, type: null,
+          value: '', valueKind: 'import', valueText: node.text,
+          _elements: [name],
+        });
+      } else {
+        for (const d of details) {
+          const displayName = d.alias || d.name.split('.').pop();
+          const v = d.from
+            ? `from ${d.from} import ${d.name}${d.alias ? ' as ' + d.alias : ''}`
+            : `import ${d.name}${d.alias ? ' as ' + d.alias : ''}`;
+          things.push({
+            kind: 'import',
+            name: displayName,
+            type: null,
+            value: v,
+            valueKind: 'import',
+            valueText: v,
+            _elements: [displayName],
+            _fromModule: d.from,
+          });
+        }
+      }
+      return;
+    }
+
+    if (node.type === 'Expr') {
+      const text = exprToText(node.value);
+      if (text && text.length > 0) {
+        let name = text;
+        if (node.value.type === 'Call') {
+          if (node.value.func.type === 'Attribute') {
+            name = exprToText(node.value.func);
+          } else if (node.value.func.type === 'Name') {
+            name = node.value.func.id + '()';
+          }
+        }
+        if (name.length > 30) name = name.slice(0, 29) + '…';
+        things.push({
+          kind: 'expr', name, type: null,
+          value: text.length > 60 ? text.slice(0, 59) + '…' : text,
+          valueKind: 'expr', valueText: text,
+          _elements: [name],
+        });
+        const calls = [];
+        collectCallTargets(node.value, calls);
+        for (const c of calls) localCalls.push({ caller: name, target: c });
+      }
+      return;
+    }
+
+    if (node.type === 'For') {
+      const targetName = targetToName(node.target);
+      if (targetName) {
+        const iterText = exprToText(node.iter);
+        things.push({
+          kind: 'loopvar', name: targetName, type: null,
+          value: `∈ ${iterText.slice(0, 50)}`,
+          valueKind: node.iter.type, valueText: iterText,
+          _elements: [targetName],
+        });
+        const refs = [];
+        collectFreeNames(node.iter, refs);
+        for (const ref of refs) {
+          if (ref === targetName) continue;
+          deferredRefs.push({ targetName, refName: ref });
+        }
+        const calls = [];
+        collectCallTargets(node.iter, calls);
+        for (const c of calls) localCalls.push({ caller: targetName, target: c });
+      }
+    }
+
+    if (Array.isArray(node.body)) for (const s of node.body) walk(s, things, deferredRefs, scopeName, scopeKind, scopePath, localCalls);
+    if (Array.isArray(node.orelse)) for (const s of node.orelse) walk(s, things, deferredRefs, scopeName, scopeKind, scopePath, localCalls);
+    if (Array.isArray(node.handlers)) for (const h of node.handlers) walk({ ...node, body: h.body }, things, deferredRefs, scopeName, scopeKind, scopePath, localCalls);
+    if (Array.isArray(node.finalbody)) for (const s of node.finalbody) walk(s, things, deferredRefs, scopeName, scopeKind, scopePath, localCalls);
+  }
+
+  function targetToName(t) {
+    if (!t) return null;
+    if (t.type === 'Name') return t.id;
+    if (t.type === 'Attribute') return t.attr;
+    return null;
+  }
+
+  function targetInfoFromNode(t) {
+    if (!t) return null;
+    if (t.type === 'Name') return { name: t.id, isAttribute: false };
+    if (t.type === 'Attribute') return { name: `${exprToText(t.value)}.${t.attr}`, isAttribute: true, attr: t.attr, base: t.value };
+    return null;
+  }
+
+  function signatureText(fn) {
+    const params = fn.params.map(p => {
+      let s = p.name;
+      if (p.annotation) s += `: ${p.annotation.name}`;
+      if (p.default) s += ` = ${exprToText(p.default)}`;
+      return s;
+    }).join(', ');
+    let s = `(${params})`;
+    if (fn.returnType) s += ` -> ${fn.returnType.name}`;
+    return s;
+  }
+
+  const moduleResult = visitScope(ast.body, null, 'module', '');
+  scopes.push({
+    name: 'Module',
+    kind: 'module',
+    things: moduleResult.things,
+    internalEdges: moduleResult.internalEdges,
+    localCalls: moduleResult.localCalls,
+  });
+
+  // Build morphisms: function call → function definition (cross-scope, tenuous),
+  // method → class attribute, import reference.
+  const morphisms = [];
+  const nameToScopes = new Map();
+  for (const sc of scopes) {
+    for (let i = 0; i < sc.things.length; i++) {
+      const t = sc.things[i];
+      if (['function', 'method', 'class_', 'import'].includes(t.kind)) {
+        if (!nameToScopes.has(t.name)) nameToScopes.set(t.name, []);
+        nameToScopes.get(t.name).push({ scope: sc, idx: i });
+      }
+    }
+  }
+
+  for (const sc of scopes) {
+    for (let i = 0; i < sc.things.length; i++) {
+      const thing = sc.things[i];
+      // self.<attr> → class attribute (strong, existing rule)
+      if (thing.name.startsWith('self.')) {
+        const attr = thing.name.slice(5);
+        const className = sc.name.split('.')[0];
+        const classScope = scopes.find(s => s.kind === 'class' && s.name === className);
+        if (classScope) {
+          const attrIdx = classScope.things.findIndex(t => t.name === attr && t.kind === 'attribute');
+          if (attrIdx >= 0) {
+            morphisms.push({
+              fromScope: sc.name, fromIdx: i,
+              toScope: classScope.name, toIdx: attrIdx,
+              kind: 'self-attr', strength: 'strong',
+              description: 'self → attribute',
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Call morphisms (across function/method scopes)
+  for (const sc of scopes) {
+    for (const call of (sc.localCalls || [])) {
+      const targets = nameToScopes.get(call.target);
+      if (!targets) continue;
+      const callerThing = sc.things.find(t => t.name === call.caller);
+      if (!callerThing) continue;
+      const callerIdx = sc.things.indexOf(callerThing);
+      for (const t of targets) {
+        if (t.scope.name === sc.name) continue; // skip intra-scope (handled by internalEdges)
+        morphisms.push({
+          fromScope: sc.name, fromIdx: callerIdx,
+          toScope: t.scope.name, toIdx: t.idx,
+          kind: 'call', strength: 'tenuous',
+          description: `${call.caller} calls ${call.target}`,
+        });
+      }
+    }
+  }
+
+  return { scopes, morphisms, callEdges };
+}
+
+function layoutRing(nodes, W, H) {
+  const N = nodes.length;
+  if (N === 0) return;
+  if (N === 1) { nodes[0].x = W / 2; nodes[0].y = H / 2; return; }
+  const R = Math.max(80, Math.min(130, 80 + N * 1.5));
+  const cx = W / 2, cy = H / 2;
+  for (let i = 0; i < N; i++) {
+    const angle = (2 * Math.PI * i / N) - Math.PI / 2;
+    nodes[i].x = cx + R * Math.cos(angle);
+    nodes[i].y = cy + R * Math.sin(angle);
+  }
+}
+
+// Multibody simulation: each node is a body with position, velocity, mass.
+// Edges are springs. There's a central attractor pulling all nodes toward
+// the canvas center. Runs as a time-stepped simulation that animates the
+// nodes into a stable layout. Snapshots are taken at every frame and
+// pushed to the SVG so the user sees the motion.
+function multibodySimulate(nodes, edges, W, H, steps) {
+  const N = nodes.length;
+  if (N === 0) return null;
+  if (N === 1) { nodes[0].x = W / 2; nodes[0].y = H / 2; return null; }
+
+  const cx = W / 2, cy = H / 2;
+  // Initialize from ring
+  layoutRing(nodes, W, H);
+
+  const vx = new Array(N).fill(0);
+  const vy = new Array(N).fill(0);
+  const mass = new Array(N).fill(1);
+
+  const snapshots = [];
+  const K_SPRING = 0.02;
+  const REST_LEN = Math.min(W, H) * 0.22;
+  const CENTER_PULL = 0.0008;
+  const REPULSE = 4500;
+  const DAMP = 0.78;
+  const dt = 1;
+
+  for (let step = 0; step < steps; step++) {
+    const fx = new Array(N).fill(0);
+    const fy = new Array(N).fill(0);
+
+    // Repulsion (O(N^2) is fine for small N)
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        const d2 = dx*dx + dy*dy + 0.01;
+        const d = Math.sqrt(d2);
+        const f = REPULSE / d2;
+        const ux = (dx / d) * f;
+        const uy = (dy / d) * f;
+        fx[i] += ux; fy[i] += uy;
+        fx[j] -= ux; fy[j] -= uy;
+      }
+    }
+    // Spring attraction along edges
+    for (const [a, b] of edges) {
+      if (a < 0 || b < 0 || a >= N || b >= N) continue;
+      const dx = nodes[b].x - nodes[a].x;
+      const dy = nodes[b].y - nodes[a].y;
+      const d = Math.sqrt(dx*dx + dy*dy) || 0.01;
+      const stretch = d - REST_LEN;
+      const f = K_SPRING * stretch;
+      const ux = (dx / d) * f;
+      const uy = (dy / d) * f;
+      fx[a] += ux; fy[a] += uy;
+      fx[b] -= ux; fy[b] -= uy;
+    }
+    // Center attractor
+    for (let i = 0; i < N; i++) {
+      fx[i] += (cx - nodes[i].x) * CENTER_PULL;
+      fy[i] += (cy - nodes[i].y) * CENTER_PULL;
+    }
+    // Integrate
+    for (let i = 0; i < N; i++) {
+      vx[i] = (vx[i] + fx[i] * dt) * DAMP;
+      vy[i] = (vy[i] + fy[i] * dt) * DAMP;
+      nodes[i].x += vx[i] * dt;
+      nodes[i].y += vy[i] * dt;
+    }
+    // Keep within bounds
+    const margin = 28;
+    for (let i = 0; i < N; i++) {
+      nodes[i].x = Math.max(margin, Math.min(W - margin, nodes[i].x));
+      nodes[i].y = Math.max(margin, Math.min(H - margin, nodes[i].y));
+    }
+    // Snapshot for animation (one every few steps)
+    if (step % 2 === 0) {
+      snapshots.push(nodes.map(n => ({ x: n.x, y: n.y })));
+    }
+  }
+  snapshots.push(nodes.map(n => ({ x: n.x, y: n.y })));
+  return snapshots;
+}
+
+let nextLatticeId = 1000;
+
+function buildLatticeFromScope(scope, opts) {
+  const opts2 = opts || {};
+  const N = scope.things.length;
+  if (N === 0) return null;
+
+  const labels = [];
+  const elements = [];
+  for (let i = 0; i < N; i++) {
+    const t = scope.things[i];
+    const lbl = (opts2.customLabels && opts2.customLabels.get(i)) || t.name;
+    labels.push(lbl);
+    const elems = (opts2.customElements && opts2.customElements.get(i)) || t._elements || [t.name];
+    elements.push(elems);
+  }
+
+  const table = Array.from({ length: N }, (_, i) =>
+    Array.from({ length: N }, (_, j) => (i + j) % N)
+  );
+
+  const nodes = scope.things.map((thing, i) => ({
+    id: i, level: 0, x: 0, y: 0,
+    label: fullLabelFor(thing, opts2.customLabels && opts2.customLabels.get(i)),
+    shortLabel: (opts2.customLabels && opts2.customLabels.get(i)) || thing.name,
+    order: 1, index: 1,
+    elements: elements[i], elementIndices: [i],
+    generators: [], generatorLabels: [],
+    genAll: (opts2.customLabels && opts2.customLabels.get(i)) || thing.name,
+    isCyclic: true, rank: 1, shape: 'circle', multiGen: false, isNormal: false,
+    viewType: 'elements',
+    _kind: kindKey(thing.kind),
+  }));
+
+  const W = 360, H = 280;
+  const baseEdges = opts2.baseEdges || [];
+  const lockRadial = opts2.lockRadial === true;
+
+  if (lockRadial || baseEdges.length === 0) {
+    layoutRing(nodes, W, H);
+  } else {
+    multibodySimulate(nodes, baseEdges, W, H, 60);
+  }
+
+  const byLevel = { 0: nodes.map(n => n.id) };
+
+  return {
+    id: ++nextLatticeId,
+    label: opts2.label || scope.name,
+    kind: 'PythonExtracted',
+    param: N, param2: undefined, param3: undefined,
+    base: {
+      nodes, edges: baseEdges, W, H, byLevel, nodeR: 22,
+      kind: 'PythonExtracted', param: N, table, labels, viewType: 'elements',
+    },
+    nodePositions: {},
+    epicenter: { x: 200, y: 200 },
+    showArrows: opts2.showArrows !== false,
+    showEdges: true, showEpicenter: true, isCollapsed: false,
+    hasseLayout: {}, viewType: 'elements',
+    _scopeName: scope.name,
+  };
+}
+
+function fullLabelFor(thing, customLabel) {
+  const name = customLabel || thing.name;
+  let label = name;
+  if (thing.type) label += `: ${thing.type}`;
+  if (thing.valueText && thing.valueKind !== 'Name' && thing.valueKind !== 'Attribute' && thing.valueKind !== 'Call' && thing.valueKind !== 'expr') {
+    label += ` = ${truncate(thing.valueText, 36)}`;
+  }
+  return label;
+}
+
+function kindKey(k) {
+  if (k === 'class_') return 'class_';
+  return k;
+}
+
+function placeLatticesInWheel(lattices) {
+  const N = lattices.length;
+  if (N === 0) return;
+  const maxDim = Math.max(...lattices.map(l => Math.max(l.base.W, l.base.H)));
+  const minR = maxDim / (2 * Math.sin(Math.PI / Math.max(N, 2))) + 80;
+  const cx = 500, cy = 350;
+  for (let i = 0; i < N; i++) {
+    const angle = (2 * Math.PI * i / N) - Math.PI / 2;
+    lattices[i].epicenter = {
+      x: cx + minR * Math.cos(angle),
+      y: cy + minR * Math.sin(angle),
+    };
+  }
+}
+
+function computeFitCamera(lattices) {
+  if (lattices.length === 0) return { tx: 0, ty: 0, scale: 1 };
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const l of lattices) {
+    const e = l.epicenter;
+    const halfW = l.base.W / 2, halfH = l.base.H / 2;
+    minX = Math.min(minX, e.x - halfW);
+    maxX = Math.max(maxX, e.x + halfW);
+    minY = Math.min(minY, e.y - halfH);
+    maxY = Math.max(maxY, e.y + halfH);
+  }
+  const padX = (maxX - minX) * 0.1 + 20;
+  const padY = (maxY - minY) * 0.1 + 20;
+  const worldW = (maxX - minX) + padX * 2;
+  const worldH = (maxY - minY) + padY * 2;
+  const targetW = 1000, targetH = 700;
+  const scale = Math.min(targetW / worldW, targetH / worldH, 1);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  return {
+    tx: targetW / 2 - cx * scale,
+    ty: targetH / 2 - cy * scale,
+    scale,
+  };
+}
+
+function emitPsinite(lattices, opts) {
+  const opts2 = opts || {};
+  const includeMorphs = !!opts2.includeMorphisms;
+  const sourceName = opts2.sourceName || null;
+
+  const scopeToId = new Map();
+  lattices.forEach(l => scopeToId.set(l._scopeName || l.label, l.id));
+
+  const nodeCustomStyles = {};
+  for (const l of lattices) {
+    for (const n of l.base.nodes) {
+      const col = KIND_COLORS[n._kind];
+      if (col) nodeCustomStyles[`${l.id}:${n.id}`] = { color: col };
+    }
+  }
+
+  const morphismMap = new Map();
+  if (includeMorphs) {
+    for (const m of (opts2.morphisms || [])) {
+      const fromId = scopeToId.get(m.fromScope);
+      const toId = scopeToId.get(m.toScope);
+      if (fromId == null || toId == null) continue;
+      const key = `${fromId}->${toId}`;
+      if (!morphismMap.has(key)) {
+        const isTenuous = m.strength === 'tenuous';
+        morphismMap.set(key, {
+          id: Date.now() + Math.random(),
+          name: isTenuous
+            ? `${m.fromScope.split('.').pop()} ⤳ ${m.toScope.split('.').pop()}`
+            : `${m.fromScope.split('.').pop()} → ${m.toScope.split('.').pop()}`,
+          color: isTenuous ? '#94a3b8' : '#f59e0b',
+          dashed: isTenuous,
+          strands: [],
+          description: m.description || '',
+        });
+      }
+      morphismMap.get(key).strands.push({
+        id: Date.now() + Math.random(),
+        fromLatticeId: fromId, fromNodeId: m.fromIdx,
+        toLatticeId: toId, toNodeId: m.toIdx,
+        kind: m.kind || 'unknown',
+      });
+    }
+  }
+
+  const camera = computeFitCamera(lattices);
+
+  return {
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    sourceFile: sourceName,
+    lattices: lattices.map(l => ({
+      id: l.id, label: l.label, kind: l.kind,
+      param: l.param, param2: l.param2, param3: l.param3,
+      epicenter: l.epicenter, nodePositions: l.nodePositions,
+      showArrows: l.showArrows, showEdges: l.showEdges, showEpicenter: l.showEpicenter,
+      isCollapsed: l.isCollapsed, _collapsedRepId: undefined,
+      hasseLayout: l.hasseLayout,
+      viewType: l.viewType || l.base?.viewType || 'elements',
+      base: l.base,
+    })),
+    morphisms: [...morphismMap.values()],
+    notes: [], drawStrokes: [], nodeCustomStyles,
+    gridSettings: { color: '#DEE7DC', size: 32, pattern: 'lines' },
+    camera,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// APP STATE & EDITOR
+// ═══════════════════════════════════════════════════════════════════════
+
+const appState = {
+  json: null, scopes: [], morphisms: [],
+  currentMode: 'main', // 'main' | 'callgraph' | 'connections'
+  currentLanguage: 'python',
+  sourceName: 'pasted.py',
+};
+
+function resetAppState() {
+  appState.json = null; appState.scopes = [];
+  appState.morphisms = []; appState.sourceName = 'pasted.py';
+}
+
+const editorState = {
+  scopeOrder: [],
+  strands: new Map(), showArrows: new Map(),
+  customLabels: new Map(), customElements: new Map(),
+  customScopeLabels: new Map(), lockRadial: new Map(),
+};
+
+function resetEditorState() {
+  editorState.scopeOrder = [];
+  editorState.strands.clear(); editorState.showArrows.clear();
+  editorState.customLabels.clear(); editorState.customElements.clear();
+  editorState.customScopeLabels.clear(); editorState.lockRadial.clear();
+}
+
+function initScopeState(scopeName) {
+  if (!editorState.strands.has(scopeName)) editorState.strands.set(scopeName, []);
+  if (!editorState.showArrows.has(scopeName)) editorState.showArrows.set(scopeName, true);
+  if (!editorState.customLabels.has(scopeName)) editorState.customLabels.set(scopeName, new Map());
+  if (!editorState.customElements.has(scopeName)) editorState.customElements.set(scopeName, new Map());
+  if (!editorState.lockRadial.has(scopeName)) editorState.lockRadial.set(scopeName, false);
+}
+
+function toggleStrand(scopeName, fromIdx, toIdx) {
+  if (fromIdx === toIdx) return;
+  const list = editorState.strands.get(scopeName) || [];
+  const existing = list.findIndex(e => e[0] === fromIdx && e[1] === toIdx);
+  if (existing >= 0) list.splice(existing, 1);
+  else list.push([fromIdx, toIdx]);
+  editorState.strands.set(scopeName, list);
+  rerenderCard(scopeName);
+}
+
+function toggleArrows(scopeName) {
+  const cur = editorState.showArrows.get(scopeName);
+  editorState.showArrows.set(scopeName, !cur);
+  rerenderCard(scopeName);
+}
+
+function toggleRadial(scopeName) {
+  const cur = editorState.lockRadial.get(scopeName);
+  editorState.lockRadial.set(scopeName, !cur);
+  rerenderCard(scopeName);
+}
+
+function setCustomLabel(scopeName, idx, label) {
+  const m = editorState.customLabels.get(scopeName);
+  if (!m) return;
+  if (label && label.length > 0) m.set(idx, label);
+  else m.delete(idx);
+  rerenderCard(scopeName);
+}
+
+function setCustomElements(scopeName, idx, elements) {
+  const m = editorState.customElements.get(scopeName);
+  if (!m) return;
+  if (elements && elements.length > 0) m.set(idx, elements);
+  else m.delete(idx);
+  rerenderCard(scopeName);
+}
+
+function setCustomScopeLabel(scopeName, label) {
+  if (label && label.length > 0) editorState.customScopeLabels.set(scopeName, label);
+  else editorState.customScopeLabels.delete(scopeName);
+  rerenderCard(scopeName);
+}
+
+function cssEscape(s) {
+  if (window.CSS && CSS.escape) return CSS.escape(s);
+  return String(s).replace(/[^a-zA-Z0-9_-]/g, c => `\\${c}`);
+}
+
+function rerenderCard(scopeName) {
+  const cardEl = document.querySelector(`[data-scope-card="${cssEscape(scopeName)}"]`);
+  if (!cardEl) return;
+  const scope = appState.scopes.find(s => s.name === scopeName);
+  if (!scope) return;
+  const html = renderLatticeCard(scope, scopeName);
+  cardEl.outerHTML = html;
+  attachCardEventHandlers(scopeName);
+}
+
+// Filter scopes/edges per current mode
+function filterForMode() {
+  const mode = appState.currentMode;
+  if (mode === 'main') {
+    return {
+      scopes: appState.scopes.map(s => ({ ...s, _filteredEdges: s.internalEdges })),
+      morphisms: appState.morphisms,
+    };
+  }
+  if (mode === 'callgraph') {
+    // Each scope: show only function/method/import nodes + call edges derived from localCalls
+    const callEdgeMap = new Map();
+    for (const sc of appState.scopes) {
+      const functionNodes = sc.things
+        .map((t, i) => ({ t, i }))
+        .filter(x => x.t.kind === 'function' || x.t.kind === 'method');
+      const calls = sc.localCalls || [];
+      const edges = [];
+      for (const c of calls) {
+        const from = functionNodes.find(fn => fn.t.name === c.caller);
+        if (!from) continue;
+        edges.push([from.i, sc.things.findIndex(t => t.name === c.target)]);
+      }
+      callEdgeMap.set(sc.name, edges);
+    }
+    return {
+      scopes: appState.scopes.map(s => ({ ...s, _filteredEdges: callEdgeMap.get(s.name) || [] })),
+      morphisms: [],
+    };
+  }
+  if (mode === 'connections') {
+    // Only show cross-scope morphisms as internal edges in the module scope
+    const moduleScope = appState.scopes.find(s => s.kind === 'module');
+    if (!moduleScope) {
+      return { scopes: appState.scopes.map(s => ({ ...s, _filteredEdges: s.internalEdges })), morphisms: [] };
+    }
+    const newModuleThings = [...moduleScope.things];
+    const newEdges = [];
+    let nextIdx = newModuleThings.length;
+    for (const m of appState.morphisms) {
+      if (m.strength !== 'tenuous') continue;
+      const fromName = `${m.fromScope}.${moduleScope.things[m.fromIdx]?.name}`;
+      const toName = `${m.toScope}.${appState.scopes.find(s => s.name === m.toScope)?.things[m.toIdx]?.name}`;
+      // Just add a small edge annotation
+      newEdges.push([m.fromIdx, m.toIdx]);
+    }
+    return {
+      scopes: appState.scopes.map(s => {
+        if (s.name === moduleScope.name) return { ...s, _filteredEdges: [...s.internalEdges, ...newEdges] };
+        return { ...s, _filteredEdges: [] };
+      }),
+      morphisms: [],
+    };
+  }
+  return { scopes: appState.scopes.map(s => ({ ...s, _filteredEdges: s.internalEdges })), morphisms: appState.morphisms };
+}
+
+function renderLatticeCard(scope, scopeName) {
+  const strands = editorState.strands.get(scopeName) || [];
+  const showArrows = editorState.showArrows.get(scopeName) !== false;
+  const lockRadial = editorState.lockRadial.get(scopeName) === true;
+  const customLabels = editorState.customLabels.get(scopeName) || new Map();
+  const customElements = editorState.customElements.get(scopeName) || new Map();
+  const displayName = editorState.customScopeLabels.get(scopeName) || scope.name;
+
+  // Use filtered edges for the current mode, or user strands if any exist
+  const baseEdges = strands.length > 0 ? strands : (scope._filteredEdges || []);
+
+  const N = scope.things.length;
+  const svgSize = 360;
+  const W = 360, H = 280;
+  const scale = Math.min(svgSize / W, svgSize / H);
+  const tx = (svgSize - W * scale) / 2;
+  const ty = (svgSize - H * scale) / 2;
+
+  const tmpNodes = scope.things.map((_, i) => ({ id: i, x: 0, y: 0 }));
+  if (lockRadial || baseEdges.length === 0) {
+    layoutRing(tmpNodes, W, H);
+  } else {
+    layoutRing(tmpNodes, W, H);
+    // Run multibody but keep final positions; user can lock radial if they want stable
+    multibodySimulate(tmpNodes, baseEdges, W, H, 60);
+  }
+
+  const safeScope = cssEscape(scopeName);
+  const arrowMarker = showArrows
+    ? `<defs><marker id="card-arrow-${safeScope}" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+         <path d="M0,0 L0,6 L7,3 Z" fill="#3a6278"/>
+       </marker></defs>`
+    : '';
+  const edgesSvg = baseEdges.map(([a, b]) => {
+    const na = tmpNodes[a], nb = tmpNodes[b];
+    if (!na || !nb) return '';
+    const x1 = na.x * scale + tx, y1 = na.y * scale + ty;
+    const x2 = nb.x * scale + tx, y2 = nb.y * scale + ty;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    const trim = 18;
+    const ex1 = x1 + (dx/len) * trim, ey1 = y1 + (dy/len) * trim;
+    const ex2 = x2 - (dx/len) * trim, ey2 = y2 - (dy/len) * trim;
+    const marker = showArrows ? `marker-end="url(#card-arrow-${safeScope})"` : '';
+    return `<line x1="${ex1}" y1="${ey1}" x2="${ex2}" y2="${ey2}" stroke="#3a6278" stroke-width="1.8" ${marker}/>`;
+  }).join('');
+
+  const circles = tmpNodes.map((n, i) => {
+    const thing = scope.things[i];
+    const col = KIND_COLORS[kindKey(thing.kind)] || '#1e3d54';
+    const lbl = customLabels.get(i) || thing.name;
+    return `<g class="card-node" data-scope="${safeScope}" data-node-idx="${i}">
+      <circle cx="${n.x * scale + tx}" cy="${n.y * scale + ty}" r="16" fill="#fff" stroke="${col}" stroke-width="2"/>
+      <text x="${n.x * scale + tx}" y="${n.y * scale + ty}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#0b151e" font-family="'Courier New', monospace" font-weight="600" style="pointer-events:none;user-select:none">${escapeHtml(truncate(lbl, 7))}</text>
+    </g>`;
+  }).join('');
+
+  const items = scope.things.map((t, i) => {
+    const col = KIND_COLORS[kindKey(t.kind)] || '#1e3d54';
+    const kindLabel = KIND_LABELS[kindKey(t.kind)] || t.kind;
+    const typeStr = t.type ? `<span class="item-type">: ${escapeHtml(truncate(t.type, 22))}</span>` : '';
+    const valText = customElements.get(i) ? `[${customElements.get(i).join(', ')}]` : (t.value || '');
+    const valStr = valText ? `<span class="item-value">${escapeHtml(truncate(valText, 28))}</span>` : '';
+    const nameShown = customLabels.get(i) || t.name;
+    return `<div class="item-row">
+      <div class="item-left" data-edit="rename" data-idx="${i}">
+        <span class="item-dot" style="background:${col}"></span>
+        <span class="item-name">${escapeHtml(nameShown)}</span>
+        <span class="item-type">${kindLabel}${typeStr}</span>
+      </div>
+      <div class="item-right" data-edit="elements" data-idx="${i}">
+        ${valStr}
+        <span class="item-edit-hint">${customElements.has(i) ? '⚙' : '⋯'}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="lattice-card" data-scope-card="${scopeName}">
+    <h3>
+      <span class="scope-name" data-edit="scope-name" title="Click to rename">${escapeHtml(displayName)}</span>
+      <span class="badge">${N} item${N === 1 ? '' : 's'}${baseEdges.length ? ' · ' + baseEdges.length + ' strand' + (baseEdges.length === 1 ? '' : 's') : ''}</span>
+      <span style="flex:1"></span>
+    </h3>
+    <div class="kind-tag">
+      <span>${scope.kind} scope</span>
+      <span class="toggles">
+        <span class="arrow-toggle ${showArrows ? 'on' : ''}" data-toggle-arrows>
+          <span class="icon">${showArrows ? '→' : '—'}</span>
+          <span>${showArrows ? 'dir' : 'undir'}</span>
+        </span>
+        <span class="radial-toggle ${lockRadial ? 'on' : ''}" data-toggle-radial>
+          <span class="icon">${lockRadial ? '◉' : '◎'}</span>
+          <span>${lockRadial ? 'locked' : 'free'}</span>
+        </span>
+      </span>
+    </div>
+    <svg class="card-svg" width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}">
+      ${arrowMarker}
+      ${edgesSvg}
+      ${circles}
+    </svg>
+    <div class="item-list">${items}</div>
+  </div>`;
+}
+
+function renderResults(scopes, errorMsg) {
+  const out = document.getElementById('output');
+  const errBox = document.getElementById('error-display');
+  errBox.innerHTML = '';
+  if (errorMsg) errBox.innerHTML = `<div class="error">⚠ ${escapeHtml(errorMsg)}</div>`;
+
+  if (scopes.length === 0) {
+    out.innerHTML = `<div class="empty-state">No structure found.${errorMsg ? ' See error above.' : ''}</div>`;
+    return;
+  }
+
+  const totalItems = scopes.reduce((s, sc) => s + sc.things.length, 0);
+  const summary = `<div class="summary-bar">
+    <div><strong>${scopes.length}</strong> lattice${scopes.length === 1 ? '' : 's'}</div>
+    <div><strong>${totalItems}</strong> item${totalItems === 1 ? '' : 's'}</div>
+    <div><strong>${scopes.filter(s => s.kind === 'function').length}</strong> function</div>
+    <div><strong>${scopes.filter(s => s.kind === 'class').length}</strong> class</div>
+    <div><strong>${appState.morphisms.length}</strong> morphism${appState.morphisms.length === 1 ? '' : 's'}</div>
+  </div>`;
+
+  const modeBar = `<div class="mode-bar">
+    <button data-mode="main" class="${appState.currentMode === 'main' ? 'active' : ''}">
+      Main code
+      <span class="sub">All things, internal dataflow edges</span>
+    </button>
+    <button data-mode="callgraph" class="${appState.currentMode === 'callgraph' ? 'active' : ''}">
+      Call graph
+      <span class="sub">Only function call relationships</span>
+    </button>
+    <button data-mode="connections" class="${appState.currentMode === 'connections' ? 'active' : ''}">
+      Function connection
+      <span class="sub">Only cross-scope morphisms</span>
+    </button>
+  </div>`;
+
+  const filtered = filterForMode();
+  const cards = filtered.scopes.map(s => renderLatticeCard(s, s.name)).join('');
+
+  const jsonPretty = JSON.stringify(appState.json, null, 2);
+  const jsonSection = `<details>
+    <summary>View raw .psinite JSON (${(jsonPretty.length / 1024).toFixed(1)} KB)</summary>
+    <pre class="json">${escapeHtml(jsonPretty)}</pre>
+  </details>`;
+
+  out.innerHTML = modeBar + summary + cards + jsonSection;
+
+  // Mode bar handlers
+  out.querySelectorAll('.mode-bar button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      appState.currentMode = btn.getAttribute('data-mode');
+      renderResults(scopes, null);
+    });
+  });
+
+  for (const s of scopes) attachCardEventHandlers(s.name);
+}
+
+const cardDrag = { scopeName: null, fromIdx: null };
+
+function attachCardEventHandlers(scopeName) {
+  const card = document.querySelector(`[data-scope-card="${cssEscape(scopeName)}"]`);
+  if (!card) return;
+
+  const arrowToggle = card.querySelector('[data-toggle-arrows]');
+  if (arrowToggle) {
+    arrowToggle.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleArrows(scopeName);
+    });
+  }
+  const radialToggle = card.querySelector('[data-toggle-radial]');
+  if (radialToggle) {
+    radialToggle.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleRadial(scopeName);
+    });
+  }
+
+  const scopeNameEl = card.querySelector('[data-edit="scope-name"]');
+  if (scopeNameEl) {
+    scopeNameEl.addEventListener('click', e => {
+      e.stopPropagation();
+      beginScopeRename(scopeName, scopeNameEl);
+    });
+  }
+  card.querySelectorAll('.item-left').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const idx = parseInt(el.getAttribute('data-idx'), 10);
+      beginRename(scopeName, idx, el);
+    });
+  });
+  card.querySelectorAll('.item-right').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const idx = parseInt(el.getAttribute('data-idx'), 10);
+      openElementsEditor(scopeName, idx);
+    });
+  });
+  const svg = card.querySelector('svg.card-svg');
+  if (svg) {
+    svg.addEventListener('mousedown', e => {
+      const target = e.target.closest('.card-node');
+      if (!target) return;
+      e.preventDefault();
+      const idx = parseInt(target.getAttribute('data-node-idx'), 10);
+      cardDrag.scopeName = scopeName;
+      cardDrag.fromIdx = idx;
+      target.classList.add('dragging');
+    });
+  }
+}
+
+function onCardDragMove(e) {
+  if (cardDrag.fromIdx == null) return;
+  const svg = document.querySelector(`[data-scope-card="${cssEscape(cardDrag.scopeName)}"] svg.card-svg`);
+  if (!svg) return;
+  let overlay = document.getElementById('card-drag-overlay');
+  if (!overlay) {
+    overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    overlay.setAttribute('id', 'card-drag-overlay');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.zIndex = '1000';
+    document.body.appendChild(overlay);
+  }
+  const rect = svg.getBoundingClientRect();
+  const scope = appState.scopes.find(s => s.name === cardDrag.scopeName);
+  if (!scope) return;
+  const tmpNodes = scope.things.map((_, i) => ({ id: i, x: 0, y: 0 }));
+  const strands = editorState.strands.get(cardDrag.scopeName) || [];
+  if (strands.length === 0) layoutRing(tmpNodes, 360, 280);
+  else { layoutRing(tmpNodes, 360, 280); multibodySimulate(tmpNodes, strands, 360, 280, 60); }
+  const scale = Math.min(rect.width / 360, rect.height / 280);
+  const tx = (rect.width - 360 * scale) / 2;
+  const ty = (rect.height - 280 * scale) / 2;
+  const fromNode = tmpNodes[cardDrag.fromIdx];
+  const x1 = rect.left + fromNode.x * scale + tx;
+  const y1 = rect.top + fromNode.y * scale + ty;
+  const x2 = e.clientX, y2 = e.clientY;
+  overlay.innerHTML = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#1e3d54" stroke-width="2" stroke-dasharray="6 4" opacity="0.7"/><circle cx="${x1}" cy="${y1}" r="3" fill="#1e3d54"/>`;
+}
+
+function onCardDragUp(e) {
+  if (cardDrag.fromIdx == null) return;
+  const overlay = document.getElementById('card-drag-overlay');
+  if (overlay) overlay.innerHTML = '';
+  const elAtPoint = document.elementFromPoint(e.clientX, e.clientY);
+  const target = elAtPoint && elAtPoint.closest && elAtPoint.closest('.card-node');
+  if (target) {
+    const tScope = target.getAttribute('data-scope');
+    const tIdx = parseInt(target.getAttribute('data-node-idx'), 10);
+    if (tScope === cardDrag.scopeName && tIdx !== cardDrag.fromIdx) {
+      toggleStrand(cardDrag.scopeName, cardDrag.fromIdx, tIdx);
+    }
+  }
+  document.querySelectorAll('.card-node.dragging').forEach(n => n.classList.remove('dragging'));
+  cardDrag.fromIdx = null;
+  cardDrag.scopeName = null;
+}
+
+function beginRename(scopeName, idx, rowEl) {
+  const scope = appState.scopes.find(s => s.name === scopeName);
+  if (!scope) return;
+  const thing = scope.things[idx];
+  const currentLabel = (editorState.customLabels.get(scopeName).get(idx)) || thing.name;
+  rowEl.innerHTML = `<input class="item-rename-input" type="text" value="${escapeHtml(currentLabel)}" />`;
+  const input = rowEl.querySelector('input');
+  input.focus(); input.select();
+  const commit = () => setCustomLabel(scopeName, idx, input.value.trim());
+  const cancel = () => rerenderCard(scopeName);
+  input.addEventListener('blur', commit, { once: true });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', commit); cancel(); }
+  });
+}
+
+function beginScopeRename(scopeName, el) {
+  const scope = appState.scopes.find(s => s.name === scopeName);
+  if (!scope) return;
+  const current = editorState.customScopeLabels.get(scopeName) || scope.name;
+  el.innerHTML = `<input class="scope-name-input" type="text" value="${escapeHtml(current)}" />`;
+  const input = el.querySelector('input');
+  input.focus(); input.select();
+  const commit = () => setCustomScopeLabel(scopeName, input.value.trim());
+  const cancel = () => rerenderCard(scopeName);
+  input.addEventListener('blur', commit, { once: true });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', commit); cancel(); }
+  });
+}
+
+let elementsEditorCtx = null;
+function openElementsEditor(scopeName, idx) {
+  const scope = appState.scopes.find(s => s.name === scopeName);
+  if (!scope) return;
+  const thing = scope.things[idx];
+  const current = (editorState.customElements.get(scopeName).get(idx)) || thing._elements || [thing.name];
+  elementsEditorCtx = { scopeName, idx };
+  renderElementsEditorModal(current);
+}
+function renderElementsEditorModal(current) {
+  const existing = document.getElementById('elements-modal');
+  if (existing) existing.remove();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.id = 'elements-modal';
+  backdrop.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()">
+      <h2>Edit Elements</h2>
+      <div class="field">
+        <label>Current elements (one chip per element)</label>
+        <div class="elements-list" id="el-chips"></div>
+      </div>
+      <div class="field">
+        <label>Add an element</label>
+        <div class="add-element-row">
+          <input type="text" id="el-input" placeholder="e.g. e, r, σ, g₁" />
+          <button id="el-add-btn">+ Add</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" id="el-cancel-btn">Cancel</button>
+        <button id="el-save-btn">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  let elements = [...current];
+  const chipsEl = backdrop.querySelector('#el-chips');
+  const inputEl = backdrop.querySelector('#el-input');
+  const renderChips = () => {
+    chipsEl.innerHTML = elements.length === 0
+      ? '<span style="font-size:10px;color:#93b5c8;font-style:italic">no elements</span>'
+      : elements.map((e, i) =>
+          `<span class="element-chip">${escapeHtml(e)}<button data-remove="${i}">×</button></span>`
+        ).join('');
+    chipsEl.querySelectorAll('button[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        elements.splice(parseInt(btn.getAttribute('data-remove'), 10), 1);
+        renderChips();
+      });
+    });
+  };
+  renderChips();
+  const addEl = () => {
+    const v = inputEl.value.trim();
+    if (!v) return;
+    elements.push(v);
+    inputEl.value = '';
+    renderChips();
+    inputEl.focus();
+  };
+  backdrop.querySelector('#el-add-btn').addEventListener('click', addEl);
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addEl(); } });
+  backdrop.querySelector('#el-cancel-btn').addEventListener('click', () => backdrop.remove());
+  backdrop.querySelector('#el-save-btn').addEventListener('click', () => {
+    if (elementsEditorCtx) {
+      setCustomElements(elementsEditorCtx.scopeName, elementsEditorCtx.idx, elements);
+    }
+    backdrop.remove();
+    elementsEditorCtx = null;
+  });
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) backdrop.remove(); });
+  inputEl.focus();
+}
+
+function analyze(code, sourceName) {
+  appState.sourceName = sourceName || 'pasted.py';
+  let ast = null;
+  let scopes = [];
+  let morphisms = [];
+  let result = { scopes: [], morphisms: [], callEdges: [] };
+
+  try {
+    const tokens = tokenize(code);
+    const parser = new Parser(tokens);
+    ast = parser.parseModule();
+  } catch (e) {
+    return { scopes, lattices: [], json: null, error: e instanceof ParseError ? e.message : `Parse error: ${e.message}` };
+  }
+
+  try {
+    result = extractScopes(ast);
+    scopes = result.scopes;
+    morphisms = result.morphisms;
+  } catch (e) {
+    return { scopes, lattices: [], json: null, error: `Extract error: ${e.message}` };
+  }
+
+  resetEditorState();
+  for (const s of scopes) {
+    editorState.scopeOrder.push(s.name);
+    initScopeState(s.name);
+    editorState.strands.set(s.name, (s.internalEdges || []).map(e => [e[0], e[1]]));
+  }
+  appState.scopes = scopes;
+  appState.morphisms = morphisms;
+
+  const lattices = scopes.map(s => {
+    const l = buildLatticeFromScope(s, {
+      showArrowsOverride: editorState.showArrows.get(s.name),
+      customLabels: editorState.customLabels.get(s.name),
+      customElements: editorState.customElements.get(s.name),
+      baseEdges: editorState.strands.get(s.name),
+      label: editorState.customScopeLabels.get(s.name) || s.name,
+      lockRadial: editorState.lockRadial.get(s.name),
+    });
+    if (l) l._scopeName = s.name;
+    return l;
+  }).filter(Boolean);
+
+  placeLatticesInWheel(lattices);
+  appState.json = emitPsinite(lattices, { includeMorphisms: true, morphisms, sourceName: appState.sourceName });
+  return { scopes, lattices, json: appState.json, error: null };
+}
+
+function rebuildLattices() {
+  const lattices = appState.scopes.map(s => {
+    const l = buildLatticeFromScope(s, {
+      showArrowsOverride: editorState.showArrows.get(s.name),
+      customLabels: editorState.customLabels.get(s.name),
+      customElements: editorState.customElements.get(s.name),
+      baseEdges: editorState.strands.get(s.name),
+      label: editorState.customScopeLabels.get(s.name) || s.name,
+      lockRadial: editorState.lockRadial.get(s.name),
+    });
+    if (l) l._scopeName = s.name;
+    return l;
+  }).filter(Boolean);
+  placeLatticesInWheel(lattices);
+  appState.json = emitPsinite(lattices, { includeMorphisms: true, morphisms: appState.morphisms, sourceName: appState.sourceName });
+  return lattices;
+}
+
+function downloadJson(mode) {
+  const lattices = rebuildLattices();
+  const includeMorphisms = mode === 'morphisms';
+  const json = emitPsinite(lattices, { includeMorphisms, morphisms: appState.morphisms, sourceName: appState.sourceName });
+  const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = includeMorphisms ? 'extracted-with-morphisms.psinite' : 'extracted-base.psinite';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const EXAMPLE = `#!/usr/bin/env python3
+"""
+scaffold.py — turn an ASCII/box-drawing file tree into real files and folders.
+
+Usage:
+    python3 scaffold.py TREE_FILE [OUTPUT_DIR] [--dry-run] [--force]
+"""
+
+import argparse
+import os
+import re
+import sys
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+# Characters that make up the "rail" / indentation prefix of a tree line.
+RAIL_CHARS = "│├└─ \t"
+
+
+def strip_comment(text: str):
+    """Split 'Name.jsx   # some comment' into ('Name.jsx', 'some comment')."""
+    m = re.search(r"(?:^|\s)#\s?(.*)$", text)
+    if not m:
+        return text.strip(), None
+    return text[: m.start()].rstrip(), (m.group(1).strip() or None)
+
+
+def parse_line(raw_line: str, line_no: int):
+    line = raw_line.rstrip("\n")
+    if not line.strip():
+        return None
+    return line
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Scaffold from an ASCII tree.")
+    parser.add_argument("tree_file")
+    parser.add_argument("output_dir", nargs="?", default=".")
+    args = parser.parse_args()
+    print(f"Reading {args.tree_file} → {args.output_dir}")
+
+
+if __name__ == "__main__":
+    main()
+`;
+
+document.getElementById('analyze-btn').addEventListener('click', () => {
+  const code = document.getElementById('code-input').value;
+  if (!code.trim()) {
+    renderResults([], 'No code to analyze.');
+    appState.json = null;
+    document.getElementById('download-btn').disabled = true;
+    document.getElementById('download-toggle').disabled = true;
+    return;
+  }
+  const result = analyze(code, 'pasted.py');
+  if (result.error) {
+    renderResults([], result.error);
+    appState.json = null;
+    document.getElementById('download-btn').disabled = true;
+    document.getElementById('download-toggle').disabled = true;
+  } else {
+    document.getElementById('download-btn').disabled = false;
+    document.getElementById('download-toggle').disabled = false;
+    document.getElementById('results-label').textContent = `Extracted Lattices — ${result.lattices.length} scope${result.lattices.length === 1 ? '' : 's'}`;
+    renderResults(result.scopes, null);
+  }
+});
+
+document.getElementById('example-btn').addEventListener('click', () => {
+  document.getElementById('code-input').value = EXAMPLE;
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  document.getElementById('code-input').value = '';
+  document.getElementById('error-display').innerHTML = '';
+  document.getElementById('output').innerHTML = `<div class="empty-state">Paste Python code on the left and click <strong>Analyze</strong> to extract structure.<div class="hint">Each scope (module, class, function) becomes one lattice</div></div>`;
+  document.getElementById('download-btn').disabled = true;
+  document.getElementById('download-toggle').disabled = true;
+  resetAppState();
+  resetEditorState();
+});
+
+document.getElementById('download-btn').addEventListener('click', () => downloadJson('morphisms'));
+document.getElementById('download-toggle').addEventListener('click', e => {
+  e.stopPropagation();
+  const menu = document.getElementById('download-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+});
+document.getElementById('download-menu').querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const mode = btn.getAttribute('data-mode');
+    document.getElementById('download-menu').style.display = 'none';
+    downloadJson(mode);
+  });
+});
+document.addEventListener('click', () => {
+  const menu = document.getElementById('download-menu');
+  if (menu) menu.style.display = 'none';
+});
+
+// Language selector
+const langButton = document.getElementById('lang-button');
+const langMenu = document.getElementById('lang-menu');
+const langLabel = document.getElementById('lang-label');
+langButton.addEventListener('click', e => {
+  e.stopPropagation();
+  langMenu.style.display = langMenu.style.display === 'none' ? 'block' : 'none';
+});
+langMenu.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const lang = btn.getAttribute('data-lang');
+    appState.currentLanguage = lang;
+    langLabel.textContent = lang.toUpperCase();
+    langMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (lang !== 'python') {
+      // Future: load language-specific parser
+      document.getElementById('error-display').innerHTML = `<div class="error">Language "${lang}" is not yet supported. Python is fully functional.</div>`;
+    } else {
+      document.getElementById('error-display').innerHTML = '';
+    }
+    langMenu.style.display = 'none';
+  });
+});
+document.addEventListener('click', () => {
+  langMenu.style.display = 'none';
+});
+
+document.addEventListener('mousemove', onCardDragMove);
+document.addEventListener('mouseup', onCardDragUp);
+
+if (!document.getElementById('code-input').value) {
+  document.getElementById('code-input').value = EXAMPLE;
+}
+</script>
+</body>
+</html>
